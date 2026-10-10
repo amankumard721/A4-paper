@@ -11,10 +11,7 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.automirrored.rounded.FormatListBulleted
-import androidx.compose.material.icons.automirrored.rounded.Redo
-import androidx.compose.material.icons.automirrored.rounded.Undo
+import androidx.compose.material.icons.automirrored.rounded.*
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -112,6 +109,9 @@ fun EditorScreen(
     LaunchedEffect(document.page, ready) {
         if (ready) host?.setPageSettings(document.page.toJson())
     }
+    var insertMenu by remember { mutableStateOf(false) }
+    var overflowMenu by remember { mutableStateOf(false) }
+
     LaunchedEffect(dark, ready) { if (ready) host?.setDark(dark) }
     Scaffold(
         modifier = Modifier.imePadding(),
@@ -119,48 +119,15 @@ fun EditorScreen(
             TopAppBar(
                 title = {
                     var renaming by remember { mutableStateOf(false) }
-                    val savedLabel =
-                        when (saved) {
-                            "Saved on device" -> tr("Saved on device", "सहेजा गया")
-                            "Saving…" -> tr("Saving…", "सहेजा जा रहा है…")
-                            "Unsaved" -> tr("Unsaved", "सहेजना बाकी")
-                            "Draft protected" -> tr("Draft protected", "ड्राफ़्ट सुरक्षित")
-                            "Recovered draft" -> tr("Recovered draft", "ड्राफ़्ट बहाल किया गया")
-                            "Save failed" -> tr("Save failed", "सहेजने में विफल")
-                            "Ready" -> tr("Ready", "तैयार")
-                            else -> saved
-                        }
-                    Column(verticalArrangement = Arrangement.Center) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.clickable { renaming = true },
-                        ) {
-                            Text(
-                                document.title.ifBlank { tr("Untitled document", "नया दस्तावेज़") },
-                                style =
-                                    MaterialTheme.typography.titleMedium.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        textDecoration =
-                                            androidx.compose.ui.text.style.TextDecoration.Underline,
-                                    ),
-                                maxLines = 1,
-                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f, fill = false),
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            Icon(
-                                Icons.Rounded.Edit,
-                                contentDescription = tr("Rename", "नाम बदलें"),
-                                modifier = Modifier.size(16.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        Text(
-                            savedLabel,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.secondary,
-                        )
-                    }
+                    Text(
+                        document.title.ifBlank { tr("Untitled document", "नया दस्तावेज़") },
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .clickable { renaming = true }
+                            .padding(horizontal = 4.dp, vertical = 2.dp),
+                    )
                     if (renaming) {
                         var value by remember { mutableStateOf(document.title) }
                         val fallbackTitle = tr("Untitled document", "नया दस्तावेज़")
@@ -194,8 +161,23 @@ fun EditorScreen(
                     }
                 },
                 navigationIcon = {
-                    IconButton(finish) {
-                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, tr("Back", "वापस"))
+                    // Google Docs style Blue Circle Checkmark
+                    Box(Modifier.padding(start = 12.dp, end = 4.dp)) {
+                        FilledIconButton(
+                            onClick = finish,
+                            shape = androidx.compose.foundation.shape.CircleShape,
+                            colors = IconButtonDefaults.filledIconButtonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary,
+                            ),
+                            modifier = Modifier.size(36.dp),
+                        ) {
+                            Icon(
+                                Icons.Rounded.Check,
+                                contentDescription = tr("Done", "सहेजें"),
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
                     }
                 },
                 actions = {
@@ -211,120 +193,110 @@ fun EditorScreen(
                     ) {
                         Icon(Icons.AutoMirrored.Rounded.Redo, tr("Redo", "फिर से"))
                     }
-                    IconButton(onClick = onSetup, enabled = ready) {
-                        Icon(Icons.Rounded.Tune, tr("Page setup", "पेज सेटअप"))
+                    IconButton(
+                        onClick = { format = true },
+                        enabled = ready,
+                    ) {
+                        Icon(Icons.Rounded.FormatColorText, tr("Format", "शैली"))
+                    }
+                    // Insert +
+                    Box {
+                        IconButton(
+                            onClick = { insertMenu = true },
+                            enabled = ready,
+                        ) {
+                            Icon(Icons.Rounded.Add, tr("Insert", "जोड़ें"))
+                        }
+                        DropdownMenu(expanded = insertMenu, onDismissRequest = { insertMenu = false }) {
+                            DropdownMenuItem(
+                                text = { Text(tr("Table & Media", "टेबल और चित्र")) },
+                                onClick = { insertMenu = false; media = true },
+                                leadingIcon = { Icon(Icons.Rounded.GridOn, null) },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(tr("Insert Photo", "फ़ोटो जोड़ें")) },
+                                onClick = {
+                                    insertMenu = false
+                                    signature = false
+                                    pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                                },
+                                leadingIcon = { Icon(Icons.Rounded.Photo, null) },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(tr("Insert Signature", "हस्ताक्षर जोड़ें")) },
+                                onClick = {
+                                    insertMenu = false
+                                    signature = true
+                                    pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                                },
+                                leadingIcon = { Icon(Icons.Rounded.Draw, null) },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(tr("Page Break", "नया पेज (पेज ब्रेक)")) },
+                                onClick = { insertMenu = false; host?.command("pageBreak") },
+                                leadingIcon = { Icon(Icons.Rounded.InsertPageBreak, null) },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(tr("Insert Date", "आज की तारीख")) },
+                                onClick = { insertMenu = false; host?.command("date") },
+                                leadingIcon = { Icon(Icons.Rounded.CalendarToday, null) },
+                            )
+                        }
+                    }
+                    // Overflow ⋮
+                    Box {
+                        IconButton(
+                            onClick = { overflowMenu = true },
+                            enabled = ready,
+                        ) {
+                            Icon(Icons.Rounded.MoreVert, tr("More", "अन्य"))
+                        }
+                        DropdownMenu(expanded = overflowMenu, onDismissRequest = { overflowMenu = false }) {
+                            DropdownMenuItem(
+                                text = { Text(tr("Export / Create PDF", "PDF बनाएँ")) },
+                                onClick = {
+                                    overflowMenu = false
+                                    host?.snapshot {
+                                        if (it != null) {
+                                            model.edit(it, document.id)
+                                            model.save()
+                                            exportWithNotification()
+                                        }
+                                    }
+                                },
+                                leadingIcon = { Icon(Icons.Rounded.PictureAsPdf, null) },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(tr("Page Setup", "पेज सेटअप")) },
+                                onClick = { overflowMenu = false; onSetup() },
+                                leadingIcon = { Icon(Icons.Rounded.Tune, null) },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(tr("Select All", "सभी चुनें")) },
+                                onClick = { overflowMenu = false; host?.command("selectAll") },
+                                leadingIcon = { Icon(Icons.Rounded.SelectAll, null) },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(tr("Save Now", "अभी सहेजें")) },
+                                onClick = {
+                                    overflowMenu = false
+                                    host?.snapshot {
+                                        if (it != null) {
+                                            model.edit(it, document.id)
+                                            model.save()
+                                        }
+                                    }
+                                },
+                                leadingIcon = { Icon(Icons.Rounded.Save, null) },
+                            )
+                        }
                     }
                 },
             )
         },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            // Sleek 1-row scrollable formatting toolbar
-            Surface(
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 1.dp,
-                shadowElevation = 2.dp,
-            ) {
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
-                        .padding(horizontal = 6.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    Tool(Icons.Rounded.FormatBold, tr("Bold", "बोल्ड"), bold, ready) {
-                        host?.command("bold")
-                    }
-                    Tool(Icons.Rounded.FormatItalic, tr("Italic", "इटैलिक"), italic, ready) {
-                        host?.command("italic")
-                    }
-                    Tool(Icons.Rounded.FormatUnderlined, tr("Underline", "रेखांकित"), underline, ready) {
-                        host?.command("underline")
-                    }
-                    Tool(
-                        Icons.AutoMirrored.Rounded.FormatListBulleted,
-                        tr("Bullets", "बुलेट"),
-                        enabled = ready,
-                    ) {
-                        host?.command("bulletList")
-                    }
-                    Tool(
-                        Icons.Rounded.FormatListNumbered,
-                        tr("Numbers", "क्रमांक"),
-                        enabled = ready,
-                    ) {
-                        host?.command("orderedList")
-                    }
-                    Tool(
-                        Icons.Rounded.FormatColorText,
-                        tr("Style", "शैली"),
-                        enabled = ready,
-                    ) {
-                        format = true
-                    }
-                    Tool(
-                        Icons.Rounded.AddPhotoAlternate,
-                        tr("Insert", "जोड़ें"),
-                        enabled = ready,
-                    ) {
-                        media = true
-                    }
-                    Box {
-                        Tool(
-                            Icons.Rounded.MoreHoriz,
-                            tr("More", "अन्य"),
-                            enabled = ready,
-                        ) {
-                            more = true
-                        }
-                        DropdownMenu(more, { more = false }) {
-                            listOf(
-                                "copy" to tr("Copy", "कॉपी"),
-                                "cut" to tr("Cut", "काटें"),
-                                "paste" to tr("Paste", "चिपकाएँ"),
-                                "selectAll" to tr("Select all", "सभी चुनें"),
-                                "date" to tr("Insert date", "दिनांक जोड़ें"),
-                                "pageBreak" to tr("Insert page break", "नया पेज जोड़ें"),
-                                "clear" to tr("Clear formatting", "फ़ॉर्मैट हटाएँ"),
-                                "save" to tr("Save now", "अभी सहेजें"),
-                            ).forEach { (command, label) ->
-                                DropdownMenuItem(
-                                    text = { Text(label) },
-                                    onClick = {
-                                        more = false
-                                        when (command) {
-                                            "paste" -> {
-                                                val clip =
-                                                    context.getSystemService(
-                                                        Context.CLIPBOARD_SERVICE
-                                                    ) as ClipboardManager
-                                                host?.command(
-                                                    "paste",
-                                                    clip.primaryClip
-                                                        ?.getItemAt(0)
-                                                        ?.coerceToText(context)
-                                                        ?.toString() ?: "",
-                                                )
-                                            }
-                                            "save" -> {
-                                                host?.snapshot {
-                                                    if (it != null)
-                                                        model.edit(it, document.id)
-                                                    model.save()
-                                                }
-                                            }
-                                            else -> host?.command(command)
-                                        }
-                                    },
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-            HorizontalDivider()
-            // Document writing canvas
+            // Document writing canvas (Pure white, edge-to-edge)
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 AndroidView(
                     factory = { ctx ->
@@ -370,65 +342,95 @@ fun EditorScreen(
                 )
                 if (!ready) CircularProgressIndicator(Modifier.align(Alignment.Center))
             }
-            HorizontalDivider()
-            // Bottom Action Bar: Page stats + Next: Preview & PDF
+
+            // Google Docs style Bottom Toolbar (Docked right above Keyboard)
             Surface(
                 color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 3.dp,
-                shadowElevation = 8.dp,
+                tonalElevation = 2.dp,
+                shadowElevation = 4.dp,
+                border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
             ) {
                 Row(
                     Modifier
                         .fillMaxWidth()
                         .navigationBarsPadding()
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 4.dp, vertical = 2.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
-                    Surface(
-                        color = MaterialTheme.colorScheme.surfaceVariant,
-                        shape = MaterialTheme.shapes.small,
+                    IconButton(
+                        onClick = { host?.command("bold") },
+                        enabled = ready,
+                        colors = if (bold) IconButtonDefaults.filledTonalIconButtonColors() else IconButtonDefaults.iconButtonColors(),
                     ) {
-                        Row(
-                            Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(
-                                Icons.Rounded.Description,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        Icon(Icons.Rounded.FormatBold, contentDescription = tr("Bold", "बोल्ड"), modifier = Modifier.size(20.dp))
+                    }
+                    IconButton(
+                        onClick = { host?.command("italic") },
+                        enabled = ready,
+                        colors = if (italic) IconButtonDefaults.filledTonalIconButtonColors() else IconButtonDefaults.iconButtonColors(),
+                    ) {
+                        Icon(Icons.Rounded.FormatItalic, contentDescription = tr("Italic", "इटैलिक"), modifier = Modifier.size(20.dp))
+                    }
+                    IconButton(
+                        onClick = { host?.command("underline") },
+                        enabled = ready,
+                        colors = if (underline) IconButtonDefaults.filledTonalIconButtonColors() else IconButtonDefaults.iconButtonColors(),
+                    ) {
+                        Icon(Icons.Rounded.FormatUnderlined, contentDescription = tr("Underline", "रेखांकित"), modifier = Modifier.size(20.dp))
+                    }
+                    IconButton(
+                        onClick = { format = true },
+                        enabled = ready,
+                    ) {
+                        Icon(Icons.Rounded.FormatColorText, contentDescription = tr("Color", "रंग"), modifier = Modifier.size(20.dp))
+                    }
+                    Box {
+                        var alignMenu by remember { mutableStateOf(false) }
+                        IconButton(onClick = { alignMenu = true }, enabled = ready) {
+                            Icon(Icons.AutoMirrored.Rounded.FormatAlignLeft, contentDescription = tr("Align", "संरेखण"), modifier = Modifier.size(20.dp))
+                        }
+                        DropdownMenu(expanded = alignMenu, onDismissRequest = { alignMenu = false }) {
+                            DropdownMenuItem(
+                                text = { Text(tr("Left", "बाएँ")) },
+                                onClick = { alignMenu = false; host?.command("align", "left") },
+                                leadingIcon = { Icon(Icons.AutoMirrored.Rounded.FormatAlignLeft, null) },
                             )
-                            Spacer(Modifier.width(6.dp))
-                            Text(
-                                "$pageCount ${tr("page(s)", "पेज")}",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontWeight = FontWeight.SemiBold,
+                            DropdownMenuItem(
+                                text = { Text(tr("Center", "बीच")) },
+                                onClick = { alignMenu = false; host?.command("align", "center") },
+                                leadingIcon = { Icon(Icons.Rounded.FormatAlignCenter, null) },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(tr("Right", "दाएँ")) },
+                                onClick = { alignMenu = false; host?.command("align", "right") },
+                                leadingIcon = { Icon(Icons.AutoMirrored.Rounded.FormatAlignRight, null) },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(tr("Justify", "दोनों ओर")) },
+                                onClick = { alignMenu = false; host?.command("align", "justify") },
+                                leadingIcon = { Icon(Icons.Rounded.FormatAlignJustify, null) },
                             )
                         }
                     }
-
-                    Button(
-                        onClick = {
-                            host?.snapshot {
-                                if (it != null) {
-                                    model.edit(it, document.id)
-                                    model.save()
-                                    exportWithNotification()
-                                }
-                            }
-                        },
+                    IconButton(
+                        onClick = { host?.command("bulletList") },
                         enabled = ready,
-                        shape = MaterialTheme.shapes.medium,
-                        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 10.dp),
                     ) {
-                        Icon(Icons.Rounded.Visibility, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            tr("Next: Preview & PDF →", "आगे बढ़ें: प्रीव्यू और PDF →"),
-                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
-                        )
+                        Icon(Icons.AutoMirrored.Rounded.FormatListBulleted, contentDescription = tr("Bullets", "बुलेट"), modifier = Modifier.size(20.dp))
+                    }
+                    IconButton(
+                        onClick = { host?.command("orderedList") },
+                        enabled = ready,
+                    ) {
+                        Icon(Icons.Rounded.FormatListNumbered, contentDescription = tr("Numbers", "क्रमांक"), modifier = Modifier.size(20.dp))
+                    }
+                    IconButton(
+                        onClick = { media = true },
+                        enabled = ready,
+                    ) {
+                        Icon(Icons.Rounded.GridOn, contentDescription = tr("Table", "टेबल"), modifier = Modifier.size(20.dp))
                     }
                 }
             }

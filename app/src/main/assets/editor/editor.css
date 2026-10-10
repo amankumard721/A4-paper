@@ -8,7 +8,7 @@
 @font-face{font-family:'Noto Serif';src:url('fonts/NotoSerif-Bold.ttf') format('truetype');font-weight:700;font-display:block}
 *{box-sizing:border-box}html,body{margin:0;padding:0;color:#172033;background:#fff;font-family:'Noto Sans','Noto Devanagari',sans-serif}
 :root{--doc-font:'Noto Sans','Noto Devanagari',sans-serif;--doc-size:12pt;--line:1.5;--space:8pt;--pw:210mm;--ph:297mm;--mt:15mm;--mr:15mm;--mb:15mm;--ml:15mm}
-#write{background:#e8ebef;padding:12px;min-height:100vh;cursor:text}#editor{background:#fff;color:#111827;padding:24px 22px;min-height:calc(100vh - 24px);max-width:794px;margin:0 auto;border:1px solid #cdd3da;box-shadow:0 2px 8px #17203318}.tiptap{outline:none;min-height:calc(100vh - 74px);overflow-wrap:anywhere}
+#write{background:#fff;padding:0;min-height:100vh;cursor:text}#editor{background:#fff;color:#111827;padding:16px 20px;min-height:100vh;max-width:100%;margin:0 auto;border:none;box-shadow:none}.tiptap{outline:none;min-height:calc(100vh - 32px);overflow-wrap:anywhere}
 .tiptap,.page-content,#measure{font-family:var(--doc-font);font-size:var(--doc-size);line-height:var(--line)}
 .page-content,#measure{white-space:pre-wrap}
 p,h1,h2,h3,blockquote,ul,ol{margin:0 0 var(--space);padding:0}h1{font-size:1.8em}h2{font-size:1.5em}h3{font-size:1.2em}ul,ol{padding-left:24pt}li>p:last-child{margin-bottom:0}blockquote{border-left:3px solid #64748b;padding-left:12pt}p:empty:before{content:'\00a0'}
