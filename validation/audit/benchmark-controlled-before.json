@@ -1,0 +1,51 @@
+{
+  "browser": "154.0.8037.98",
+  "note": "Desktop Chromium. JS command duration, not Android IME latency. Five long paragraphs per explicit page.",
+  "results": [
+    {
+      "requestedPages": 1,
+      "actualPages": 1,
+      "coldMs": 51.20000000298023,
+      "cachedMs": 0.10000000149011612,
+      "oneEditMs": 3.4000000059604645,
+      "commandP95Ms": 26,
+      "heapBytes": 8749056
+    },
+    {
+      "requestedPages": 5,
+      "actualPages": 5,
+      "coldMs": 12.800000004470348,
+      "cachedMs": 0.19999999552965164,
+      "oneEditMs": 14.100000001490116,
+      "commandP95Ms": 1.5,
+      "heapBytes": 8874065
+    },
+    {
+      "requestedPages": 20,
+      "actualPages": 20,
+      "coldMs": 46.80000000447035,
+      "cachedMs": 0.6000000014901161,
+      "oneEditMs": 50.19999999552965,
+      "commandP95Ms": 1.5,
+      "heapBytes": 11822996
+    },
+    {
+      "requestedPages": 50,
+      "actualPages": 50,
+      "coldMs": 109.60000000149012,
+      "cachedMs": 1,
+      "oneEditMs": 113,
+      "commandP95Ms": 1.7000000029802322,
+      "heapBytes": 13264845
+    },
+    {
+      "requestedPages": 100,
+      "actualPages": 100,
+      "coldMs": 235.29999999701977,
+      "cachedMs": 1.6000000014901161,
+      "oneEditMs": 208.69999999552965,
+      "commandP95Ms": 3.100000001490116,
+      "heapBytes": 13579329
+    }
+  ]
+}

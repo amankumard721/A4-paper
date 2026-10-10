@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "ERR_PNPM_MISSING_PACKAGE_INDEX_FILE",
+    "message": "Failed to find package index file for @tiptap/core@2.11.5 (at sha512-jb0KTdUJaJY53JaN7ooY3XAxHQNoMYti/H6ANo707PsLXVeEqJ9o8+eBup1JU5CuwzrgnDc2dECt2WIGX9f8Jw==\t@tiptap/core@2.11.5), please consider running 'pnpm install'"
+  }
+}

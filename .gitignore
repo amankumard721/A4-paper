@@ -1,0 +1,13 @@
+.gradle/
+.idea/
+**/build/
+local.properties
+editor/node_modules/
+*.jks
+*.keystore
+
+keystore.properties
+.env
+.env.*
+play-release/private/
+work/

@@ -1,0 +1,12 @@
+[
+  {
+    "pattern": "\\{\\{([^}]+)}}",
+    "status": 66305,
+    "compiled": false
+  },
+  {
+    "pattern": "\\{\\{([^}]+)\\}\\}",
+    "status": 0,
+    "compiled": true
+  }
+]

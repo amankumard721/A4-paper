@@ -1,0 +1,48 @@
+diff --git a/dist/index.cjs b/dist/index.cjs
+index 357402150bd1c46ffacf6e0b95e598eb0c1f6a04..1d5666dc11d7eb64edec195ff13c00ab96c8e0e5 100644
+--- a/dist/index.cjs
++++ b/dist/index.cjs
+@@ -316,6 +316,7 @@ function mergeAttributes(...objects) {
+         .reduce((items, item) => {
+         const mergedAttributes = { ...items };
+         Object.entries(item).forEach(([key, value]) => {
++        if (key === '__proto__') return; // GHSA-cp6q-959q-f8rh backport
+             const exists = mergedAttributes[key];
+             if (!exists) {
+                 mergedAttributes[key] = value;
+diff --git a/dist/index.js b/dist/index.js
+index 85c177ad2658ce43de1c91644f11af15d5f6a842..0339fbb0c933fb7b26a0d8c60c75af3cba266533 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -314,6 +314,7 @@ function mergeAttributes(...objects) {
+         .reduce((items, item) => {
+         const mergedAttributes = { ...items };
+         Object.entries(item).forEach(([key, value]) => {
++        if (key === '__proto__') return; // GHSA-cp6q-959q-f8rh backport
+             const exists = mergedAttributes[key];
+             if (!exists) {
+                 mergedAttributes[key] = value;
+diff --git a/dist/index.umd.js b/dist/index.umd.js
+index cc4c03cab515ef45f3d8a2ff9d2de344d252573b..a5e0a92bc100473938fdccab870e4494bc6fc824 100644
+--- a/dist/index.umd.js
++++ b/dist/index.umd.js
+@@ -312,6 +312,7 @@
+           .reduce((items, item) => {
+           const mergedAttributes = { ...items };
+           Object.entries(item).forEach(([key, value]) => {
++        if (key === '__proto__') return; // GHSA-cp6q-959q-f8rh backport
+               const exists = mergedAttributes[key];
+               if (!exists) {
+                   mergedAttributes[key] = value;
+diff --git a/src/utilities/mergeAttributes.ts b/src/utilities/mergeAttributes.ts
+index b98dc510391199e8c06c25ae945f2b350913e41a..94e17a56c6fd72f73a35d1dac76ff5613dd18c1e 100644
+--- a/src/utilities/mergeAttributes.ts
++++ b/src/utilities/mergeAttributes.ts
+@@ -5,6 +5,7 @@ export function mergeAttributes(...objects: Record<string, any>[]): Record<strin
+       const mergedAttributes = { ...items }
+ 
+       Object.entries(item).forEach(([key, value]) => {
++        if (key === '__proto__') return; // GHSA-cp6q-959q-f8rh backport
+         const exists = mergedAttributes[key]
+ 
+         if (!exists) {

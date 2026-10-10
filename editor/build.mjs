@@ -1,0 +1,10 @@
+import { build } from 'esbuild';
+import { mkdir, copyFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+process.chdir(fileURLToPath(new URL('.',import.meta.url)));
+const out = '../app/src/main/assets/editor';
+await mkdir(out, {recursive:true});
+await build({entryPoints:['src/editor.js'],bundle:true,outfile:`${out}/editor.js`,format:'iife',target:'chrome90',minify:true,legalComments:'eof',external:['fs','path']});
+await copyFile('node_modules/harfbuzzjs/hb.wasm',`${out}/hb.wasm`);
+await Promise.all(['index.html','editor.css'].map(x=>copyFile(`src/${x}`,`${out}/${x}`)));
+console.log('Bundled offline editor assets.');

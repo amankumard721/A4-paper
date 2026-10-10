@@ -1,0 +1,13 @@
+<resources>
+    <style name="Theme.Lekhak" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:colorAccent">#2563EB</item>
+        <item name="android:windowActionModeOverlay">true</item>
+    </style>
+    <style name="Theme.Lekhak.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">#F1F5F9</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher</item>
+        <item name="postSplashScreenTheme">@style/Theme.Lekhak</item>
+    </style>
+</resources>

@@ -1,0 +1,101 @@
+{
+  "browser": "154.0.8037.98",
+  "note": "Desktop Chrome, single run. Long tasks >=50 ms. Heap and cumulative CDP counters are not Android WebView/process RSS or GC measurements.",
+  "results": [
+    {
+      "requestedPages": 1,
+      "pages": 1,
+      "totalMs": 192.89999999850988,
+      "vectorExportMs": 139.60000000149012,
+      "pdfBytes": 40034,
+      "longTaskCount": 1,
+      "maxLongTaskMs": 70,
+      "heapBefore": 11745108,
+      "heapAfter": 31117109,
+      "browserMetrics": {
+        "LayoutCount": 12,
+        "RecalcStyleCount": 14,
+        "LayoutDuration": 0.045991,
+        "RecalcStyleDuration": 0.004081,
+        "JSHeapUsedSize": 8640688,
+        "JSHeapTotalSize": 14950400
+      }
+    },
+    {
+      "requestedPages": 5,
+      "pages": 5,
+      "totalMs": 191.80000000447035,
+      "vectorExportMs": 182,
+      "pdfBytes": 55391,
+      "longTaskCount": 0,
+      "maxLongTaskMs": 0,
+      "heapBefore": 31117109,
+      "heapAfter": 17686462,
+      "browserMetrics": {
+        "LayoutCount": 34,
+        "RecalcStyleCount": 37,
+        "LayoutDuration": 0.061473,
+        "RecalcStyleDuration": 0.005242,
+        "JSHeapUsedSize": 11289140,
+        "JSHeapTotalSize": 23339008
+      }
+    },
+    {
+      "requestedPages": 20,
+      "pages": 20,
+      "totalMs": 759.8999999985099,
+      "vectorExportMs": 654.7000000029802,
+      "pdfBytes": 127807,
+      "longTaskCount": 2,
+      "maxLongTaskMs": 81,
+      "heapBefore": 17686462,
+      "heapAfter": 10891435,
+      "browserMetrics": {
+        "LayoutCount": 116,
+        "RecalcStyleCount": 120,
+        "LayoutDuration": 0.116657,
+        "RecalcStyleDuration": 0.008525,
+        "JSHeapUsedSize": 6377020,
+        "JSHeapTotalSize": 47980544
+      }
+    },
+    {
+      "requestedPages": 50,
+      "pages": 50,
+      "totalMs": 1576.2999999970198,
+      "vectorExportMs": 1520,
+      "pdfBytes": 244428,
+      "longTaskCount": 2,
+      "maxLongTaskMs": 143,
+      "heapBefore": 10891435,
+      "heapAfter": 75272474,
+      "browserMetrics": {
+        "LayoutCount": 272,
+        "RecalcStyleCount": 277,
+        "LayoutDuration": 0.212123,
+        "RecalcStyleDuration": 0.01367,
+        "JSHeapUsedSize": 27577652,
+        "JSHeapTotalSize": 87564288
+      }
+    },
+    {
+      "requestedPages": 100,
+      "pages": 100,
+      "totalMs": 2774.5,
+      "vectorExportMs": 2233.39999999851,
+      "pdfBytes": 443229,
+      "longTaskCount": 3,
+      "maxLongTaskMs": 496,
+      "heapBefore": 79344796,
+      "heapAfter": 13564968,
+      "browserMetrics": {
+        "LayoutCount": 538,
+        "RecalcStyleCount": 544,
+        "LayoutDuration": 0.446853,
+        "RecalcStyleDuration": 0.025181,
+        "JSHeapUsedSize": 37158844,
+        "JSHeapTotalSize": 106065920
+      }
+    }
+  ]
+}

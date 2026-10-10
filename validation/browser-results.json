@@ -1,0 +1,50 @@
+{
+  "browser": "154.0.8037.98",
+  "results": [
+    {
+      "case": "mixed-script",
+      "pages": 1,
+      "overflow": false,
+      "fonts": true
+    },
+    {
+      "case": "long-paragraph",
+      "pages": 5,
+      "overflow": false,
+      "fonts": true
+    },
+    {
+      "case": "ten-plus-pages",
+      "pages": 20,
+      "overflow": false,
+      "fonts": true
+    },
+    {
+      "case": "manual-breaks",
+      "pages": 2,
+      "overflow": false,
+      "fonts": true
+    },
+    {
+      "case": "landscape",
+      "pages": 3,
+      "overflow": false,
+      "fonts": true
+    },
+    {
+      "case": "lists",
+      "pages": 4,
+      "overflow": false,
+      "fonts": true
+    },
+    {
+      "case": "empty",
+      "pages": 1,
+      "overflow": false,
+      "fonts": true
+    }
+  ],
+  "roundtrip": "passed",
+  "pasteSafety": "passed",
+  "errors": []
+}

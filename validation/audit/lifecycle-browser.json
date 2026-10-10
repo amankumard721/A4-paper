@@ -1,0 +1,10 @@
+{
+  "streamedBoot": "pass",
+  "jpegPdf": "pass",
+  "hindiAccessibleTextbox": "pass",
+  "multilineLanguageAndDescription": "pass",
+  "measurementCloneAriaHidden": "pass",
+  "existingLayoutSecurityAndHardeningSuite": "pass",
+  "nativeTalkBack": "not run",
+  "androidBackgroundExport": "not run"
+}

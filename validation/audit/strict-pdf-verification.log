@@ -1,0 +1,12 @@
+unicode-samples 1 {'pypdf': True, 'PyMuPDF': True, 'PDFium': True}
+long-hindi 3 {'pypdf': True, 'PyMuPDF': True, 'PDFium': True}
+styles 1 {'pypdf': True, 'PyMuPDF': True, 'PDFium': True}
+mono 1 {'pypdf': True, 'PyMuPDF': True, 'PDFium': True}
+serif 1 {'pypdf': True, 'PyMuPDF': True, 'PDFium': True}
+multipage-table 3 {'pypdf': True, 'PyMuPDF': True, 'PDFium': True}
+image-signature 1 {'pypdf': True, 'PyMuPDF': True, 'PDFium': True}
+Traceback (most recent call last):
+  File "C:\A4 typing app\A4Lekhak\editor\tests\verify-hardening.py", line 33, in <module>
+    assert all(all(r.get('meaningfulDoubleSpaces',{}).values()) for r in results), 'Known compatibility failure: PDFium collapses consecutive spaces; raw results retained in pdf-regression.json'
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: Known compatibility failure: PDFium collapses consecutive spaces; raw results retained in pdf-regression.json
