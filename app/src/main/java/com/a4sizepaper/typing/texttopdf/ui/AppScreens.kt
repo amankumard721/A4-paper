@@ -136,7 +136,7 @@ fun LekhakApp(model: MainViewModel) {
                         TopAppBar(
                             title = {
                                 Column {
-                                    Text("A4 Lekhak", fontWeight = FontWeight.Bold)
+                                    Text("A4 Paper Typing", fontWeight = FontWeight.Bold)
                                     Text(
                                         tr(
                                             "A little space for your ideas",
@@ -380,7 +380,7 @@ fun LekhakApp(model: MainViewModel) {
                             }
                         }
                         item {
-                            SettingsCard(tr("About A4 Lekhak", "A4 Lekhak के बारे में")) {
+                            SettingsCard(tr("About A4 Paper Typing", "A4 Paper Typing के बारे में")) {
                                 TextButton(onClick = { info = "privacy" }) {
                                     Text(tr("Privacy policy", "गोपनीयता नीति"))
                                 }
@@ -399,7 +399,7 @@ fun LekhakApp(model: MainViewModel) {
                                                     )
                                                     .putExtra(
                                                         android.content.Intent.EXTRA_SUBJECT,
-                                                        "A4 Lekhak support",
+                                                        "A4 Paper Typing support",
                                                     )
                                             )
                                         } catch (_: android.content.ActivityNotFoundException) {
@@ -567,7 +567,7 @@ fun LekhakApp(model: MainViewModel) {
                 title = {
                     Text(
                         if (kind == "privacy") tr("Privacy policy", "गोपनीयता नीति")
-                        else "A4 Lekhak ${com.a4sizepaper.typing.texttopdf.BuildConfig.VERSION_NAME}"
+                        else "A4 Paper Typing ${com.a4sizepaper.typing.texttopdf.BuildConfig.VERSION_NAME}"
                     )
                 },
                 text = {
@@ -577,8 +577,8 @@ fun LekhakApp(model: MainViewModel) {
                         text =
                             if (kind == "privacy")
                                 tr(
-                                    "A4 Lekhak — AMAN KUMAR\nUpdated 10 October 2026\nContact: AMAKUNAR.IN@GMAIL.COM\n\nDocuments, selected photos and PDFs are processed on this device. No account, analytics, ads or document uploads. The app requests no Internet permission.\n\nPhoto Picker grants access only to images you choose. A private resized copy is stored; image metadata is removed. Notification permission is optional and shows PDF export progress.\n\nFiles leave the app when you choose Save as, Share or Print. The selected app, cloud provider or printer handles that copy under its own policy. We do not receive your documents.\n\nDelete documents within the app. Unused images can be removed after a 24-hour grace period at a later startup. Each document’s latest private PDF is retained; earlier PDFs can be removed after seven days. Clearing app storage or uninstalling removes private files. Copies saved elsewhere must be deleted there. Save important PDFs outside the app before uninstalling.\n\nIf you email support, your email address and message are handled to answer your request. Do not send sensitive documents unless necessary; contact us to request deletion of support correspondence. We do not sell your information.",
-                                    "A4 Lekhak — AMAN KUMAR\nअपडेट: 10 अक्टूबर 2026\nसंपर्क: AMAKUNAR.IN@GMAIL.COM\n\nदस्तावेज़, चुनी हुई तस्वीरें और PDF इसी डिवाइस पर बनते हैं। लॉगिन, विज्ञापन, एनालिटिक्स या दस्तावेज़ अपलोड नहीं हैं। ऐप इंटरनेट अनुमति नहीं माँगता।\n\nPhoto Picker से केवल आपकी चुनी हुई तस्वीर की निजी कॉपी बनती है; तस्वीर का मेटाडेटा हटाया जाता है। PDF की प्रगति दिखाने की notification अनुमति वैकल्पिक है।\n\nSave as, Share या Print करने पर चुना हुआ ऐप, क्लाउड प्रदाता या प्रिंटर आपकी कॉपी संभालता है। हमें दस्तावेज़ प्राप्त नहीं होते।\n\nदस्तावेज़ ऐप में हटा सकते हैं। अनुपयोगी तस्वीरें 24 घंटे बाद अगले startup पर साफ हो सकती हैं। हर दस्तावेज़ की नई PDF रहती है; पुराने versions सात दिन बाद साफ हो सकते हैं। ऐप का डेटा साफ करने या uninstall करने पर निजी फ़ाइलें मिटती हैं। बाहर सहेजी कॉपी वहीं से हटाएँ।\n\nसहायता के लिए email करने पर आपका पता और संदेश जवाब देने के लिए उपयोग होते हैं। ज़रूरत के बिना संवेदनशील दस्तावेज़ न भेजें। सहायता-संदेश हटवाने के लिए हमसे संपर्क करें। आपकी जानकारी बेची नहीं जाती।",
+                                    "A4 Paper Typing — AMAN KUMAR\nUpdated 10 October 2026\nContact: AMAKUNAR.IN@GMAIL.COM\n\nDocuments, selected photos and PDFs are processed on this device. No account, analytics, ads or document uploads. The app requests no Internet permission.\n\nPhoto Picker grants access only to images you choose. A private resized copy is stored; image metadata is removed. Notification permission is optional and shows PDF export progress.\n\nFiles leave the app when you choose Save as, Share or Print. The selected app, cloud provider or printer handles that copy under its own policy. We do not receive your documents.\n\nDelete documents within the app. Unused images can be removed after a 24-hour grace period at a later startup. Each document’s latest private PDF is retained; earlier PDFs can be removed after seven days. Clearing app storage or uninstalling removes private files. Copies saved elsewhere must be deleted there. Save important PDFs outside the app before uninstalling.\n\nIf you email support, your email address and message are handled to answer your request. Do not send sensitive documents unless necessary; contact us to request deletion of support correspondence. We do not sell your information.",
+                                    "A4 Paper Typing — AMAN KUMAR\nअपडेट: 10 अक्टूबर 2026\nसंपर्क: AMAKUNAR.IN@GMAIL.COM\n\nदस्तावेज़, चुनी हुई तस्वीरें और PDF इसी डिवाइस पर बनते हैं। लॉगिन, विज्ञापन, एनालिटिक्स या दस्तावेज़ अपलोड नहीं हैं। ऐप इंटरनेट अनुमति नहीं माँगता।\n\nPhoto Picker से केवल आपकी चुनी हुई तस्वीर की निजी कॉपी बनती है; तस्वीर का मेटाडेटा हटाया जाता है। PDF की प्रगति दिखाने की notification अनुमति वैकल्पिक है।\n\nSave as, Share या Print करने पर चुना हुआ ऐप, क्लाउड प्रदाता या प्रिंटर आपकी कॉपी संभालता है। हमें दस्तावेज़ प्राप्त नहीं होते।\n\nदस्तावेज़ ऐप में हटा सकते हैं। अनुपयोगी तस्वीरें 24 घंटे बाद अगले startup पर साफ हो सकती हैं। हर दस्तावेज़ की नई PDF रहती है; पुराने versions सात दिन बाद साफ हो सकते हैं। ऐप का डेटा साफ करने या uninstall करने पर निजी फ़ाइलें मिटती हैं। बाहर सहेजी कॉपी वहीं से हटाएँ।\n\nसहायता के लिए email करने पर आपका पता और संदेश जवाब देने के लिए उपयोग होते हैं। ज़रूरत के बिना संवेदनशील दस्तावेज़ न भेजें। सहायता-संदेश हटवाने के लिए हमसे संपर्क करें। आपकी जानकारी बेची नहीं जाती।",
                                 )
                             else
                                 tr(
@@ -612,7 +612,7 @@ private fun Onboarding(onStart: () -> Unit) {
             }
             Spacer(Modifier.height(32.dp))
             Text(
-                "A4 Lekhak",
+                "A4 Paper Typing",
                 style = MaterialTheme.typography.displaySmall,
                 fontWeight = FontWeight.Bold,
             )

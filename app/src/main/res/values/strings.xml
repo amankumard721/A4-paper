@@ -1,4 +1,4 @@
-<resources><string name="app_name">A4 Lekhak</string><string name="export_channel">PDF exports</string>
+<resources><string name="app_name">A4 Paper Typing</string><string name="export_channel">PDF exports</string>
 <string name="export_running">Creating PDF…</string>
 <string name="export_wait">Your document is being prepared</string>
 <string name="export_cancel">Cancel</string></resources>

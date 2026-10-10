@@ -1,6 +1,6 @@
-# A4 Lekhak — Android document editor
+# A4 Paper Typing — Android document editor
 
-Version 1.1.2 (code 4), package com.a4lekhak.documentmaker. Source is in C:\A4 typing app\A4Lekhak. Debug APK is for your physical-device testing; it is not a production-certified release.
+Version 1.2.0 (code 5), package com.a4sizepaper.typing.texttopdf. Source is in C:\A4 typing app\A4Lekhak. Debug APK is for your physical-device testing; it is not a production-certified release.
 
 Install the updated A4-Lekhak-debug.apk from the parent folder over the previous build when signing permits. Do not uninstall to update: uninstalling removes private documents. Save important PDFs outside the app. Android 8+ with an updated Android System WebView is required. No emulator or device installation was performed here.
 

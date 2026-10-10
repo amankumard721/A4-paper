@@ -1,7 +1,0 @@
-A4 Lekhak — हिं दी और English
-हिं दी लेखले न परी क्षण: क्षत्रि य, प्रा र्थना , वि द्या लय, दृष्टि , श्रद्धा , रा ष्ट्र, स्वा स्थ्य, स्वतंत्रता , कृपया , फ़ा इल।
-Bold, italic and underline
-हिं दी लेखन परी क्षण: क्षत्रि य, प्रा र्थना, वि द्या लय, दृष्टि , श्रद्धा , रा ष्ट्र, स्वा स्थ्य, स्वतंत्रता , कृपया ,
-फ़ा इल। A4 Lekhak preserves Hindi and English together. The quick
-brown fox jumps over the lazy dog.
-Right aligned text

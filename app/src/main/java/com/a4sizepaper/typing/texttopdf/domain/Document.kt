@@ -126,7 +126,7 @@ data class Document(
 
         fun fromJson(j: JSONObject): Document {
             require(j.getInt("schemaVersion") == 1) {
-                "This document needs a newer version of A4 Lekhak"
+                "This document needs a newer version of A4 Paper Typing"
             }
             val id = j.getString("id")
             UUID.fromString(id)

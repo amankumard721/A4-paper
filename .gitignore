@@ -11,3 +11,13 @@ keystore.properties
 .env.*
 play-release/private/
 work/
+
+# Local generated reports, recordings and signing material
+validation/
+.kotlin/
+*.p12
+*.pfx
+*.apk
+*.aab
+**/upload-credentials.json
+**/private/
