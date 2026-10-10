@@ -52,9 +52,7 @@ fun EditorScreen(
     val saved by model.saving.collectAsStateWithLifecycle()
     var host by remember(document.id) { mutableStateOf<EditorHost?>(null) }
     var ready by remember(document.id) { mutableStateOf(false) }
-    var pages by rememberSaveable(document.id) { mutableStateOf(false) }
     var pageCount by remember { mutableIntStateOf(1) }
-    var zoom by remember { mutableFloatStateOf(0f) }
     var bold by remember { mutableStateOf(false) }
     var italic by remember { mutableStateOf(false) }
     var underline by remember { mutableStateOf(false) }
@@ -123,9 +121,9 @@ fun EditorScreen(
                     var renaming by remember { mutableStateOf(false) }
                     val savedLabel =
                         when (saved) {
-                            "Saved on device" -> tr("Saved on device", "डिवाइस पर सहेजा गया")
+                            "Saved on device" -> tr("Saved on device", "सहेजा गया")
                             "Saving…" -> tr("Saving…", "सहेजा जा रहा है…")
-                            "Unsaved" -> tr("Unsaved", "असहेजा")
+                            "Unsaved" -> tr("Unsaved", "सहेजना बाकी")
                             "Draft protected" -> tr("Draft protected", "ड्राफ़्ट सुरक्षित")
                             "Recovered draft" -> tr("Recovered draft", "ड्राफ़्ट बहाल किया गया")
                             "Save failed" -> tr("Save failed", "सहेजने में विफल")
@@ -201,221 +199,132 @@ fun EditorScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = onSetup, enabled = ready) {
-                        Icon(Icons.Rounded.Tune, tr("Page setup", "पेज सेटअप"))
-                    }
-                    FluentButton(
-                        onClick = {
-                            host?.snapshot {
-                                if (it != null) {
-                                    model.edit(it, document.id)
-                                    model.save()
-                                    exportWithNotification()
-                                }
-                            }
-                        },
+                    IconButton(
+                        onClick = { host?.command("undo") },
                         enabled = ready,
                     ) {
-                        Text(tr("Create PDF", "PDF बनाएँ"))
+                        Icon(Icons.AutoMirrored.Rounded.Undo, tr("Undo", "पहले जैसा"))
+                    }
+                    IconButton(
+                        onClick = { host?.command("redo") },
+                        enabled = ready,
+                    ) {
+                        Icon(Icons.AutoMirrored.Rounded.Redo, tr("Redo", "फिर से"))
+                    }
+                    IconButton(onClick = onSetup, enabled = ready) {
+                        Icon(Icons.Rounded.Tune, tr("Page setup", "पेज सेटअप"))
                     }
                 },
             )
         },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            // Sleek 1-row scrollable formatting toolbar
+            Surface(
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 1.dp,
+                shadowElevation = 2.dp,
             ) {
-                FilterChip(
-                    !pages,
-                    {
-                        pages = false
-                        host?.setMode(false)
-                    },
-                    label = { Text(tr("Write", "लिखें")) },
-                    enabled = ready,
-                )
-                FilterChip(
-                    pages,
-                    {
-                        pages = true
-                        host?.setMode(true)
-                    },
-                    label = { Text(tr("Pages · preview", "पेज · प्रीव्यू")) },
-                    enabled = ready,
-                )
-                Spacer(Modifier.weight(1f))
-                if (pages)
-                    Text(
-                        "$pageCount ${tr("pages","पेज")}",
-                        style = MaterialTheme.typography.labelMedium,
-                    )
-            }
-            if (pages)
                 Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                    Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 6.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    Text(
-                        tr("Preview only", "केवल प्रीव्यू"),
-                        Modifier.weight(1f),
-                        style = MaterialTheme.typography.labelSmall,
-                    )
-                    TextButton(
-                        onClick = {
-                            zoom = 0f
-                            host?.zoom(0f)
-                        }
-                    ) {
-                        Text(tr("Fit", "फ़िट"))
+                    Tool(Icons.Rounded.FormatBold, tr("Bold", "बोल्ड"), bold, ready) {
+                        host?.command("bold")
                     }
-                    IconButton(
-                        onClick = {
-                            zoom = (if (zoom == 0f) 0.5f else zoom - 0.15f).coerceAtLeast(0.3f)
-                            host?.zoom(zoom)
-                        }
-                    ) {
-                        Icon(Icons.Rounded.Remove, tr("Zoom out", "छोटा करें"))
+                    Tool(Icons.Rounded.FormatItalic, tr("Italic", "इटैलिक"), italic, ready) {
+                        host?.command("italic")
                     }
-                    IconButton(
-                        onClick = {
-                            zoom = (if (zoom == 0f) 0.75f else zoom + 0.15f).coerceAtMost(2f)
-                            host?.zoom(zoom)
-                        }
-                    ) {
-                        Icon(Icons.Rounded.Add, tr("Zoom in", "बड़ा करें"))
+                    Tool(Icons.Rounded.FormatUnderlined, tr("Underline", "रेखांकित"), underline, ready) {
+                        host?.command("underline")
                     }
-                }
-            if (!pages)
-                Surface(color = MaterialTheme.colorScheme.surface, shadowElevation = 2.dp) {
-                    Column(Modifier.fillMaxWidth()) {
-                        FlowRow(
-                            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
-                            horizontalArrangement = Arrangement.SpaceEvenly,
-                            maxItemsInEachRow = 5,
+                    Tool(
+                        Icons.AutoMirrored.Rounded.FormatListBulleted,
+                        tr("Bullets", "बुलेट"),
+                        enabled = ready,
+                    ) {
+                        host?.command("bulletList")
+                    }
+                    Tool(
+                        Icons.Rounded.FormatListNumbered,
+                        tr("Numbers", "क्रमांक"),
+                        enabled = ready,
+                    ) {
+                        host?.command("orderedList")
+                    }
+                    Tool(
+                        Icons.Rounded.FormatColorText,
+                        tr("Style", "शैली"),
+                        enabled = ready,
+                    ) {
+                        format = true
+                    }
+                    Tool(
+                        Icons.Rounded.AddPhotoAlternate,
+                        tr("Insert", "जोड़ें"),
+                        enabled = ready,
+                    ) {
+                        media = true
+                    }
+                    Box {
+                        Tool(
+                            Icons.Rounded.MoreHoriz,
+                            tr("More", "अन्य"),
+                            enabled = ready,
                         ) {
-                            Tool(Icons.Rounded.FormatBold, tr("Bold", "बोल्ड"), bold, ready) {
-                                host?.command("bold")
-                            }
-                            Tool(
-                                Icons.Rounded.FormatItalic,
-                                tr("Italic", "इटैलिक"),
-                                italic,
-                                ready,
-                            ) {
-                                host?.command("italic")
-                            }
-                            Tool(
-                                Icons.Rounded.FormatUnderlined,
-                                tr("Underline", "रेखांकित"),
-                                underline,
-                                ready,
-                            ) {
-                                host?.command("underline")
-                            }
-                            Tool(
-                                Icons.AutoMirrored.Rounded.FormatListBulleted,
-                                tr("Bulleted list", "बुलेट सूची"),
-                                enabled = ready,
-                            ) {
-                                host?.command("bulletList")
-                            }
-                            Tool(
-                                Icons.Rounded.FormatListNumbered,
-                                tr("Numbered list", "क्रमांक सूची"),
-                                enabled = ready,
-                            ) {
-                                host?.command("orderedList")
-                            }
-                            Tool(
-                                Icons.Rounded.FormatColorText,
-                                tr("Text style", "टेक्स्ट शैली"),
-                                enabled = ready,
-                            ) {
-                                format = true
-                            }
-                            Tool(
-                                Icons.AutoMirrored.Rounded.Undo,
-                                tr("Undo", "पहले जैसा"),
-                                enabled = ready,
-                            ) {
-                                host?.command("undo")
-                            }
-                            Tool(
-                                Icons.AutoMirrored.Rounded.Redo,
-                                tr("Redo", "फिर से"),
-                                enabled = ready,
-                            ) {
-                                host?.command("redo")
-                            }
-                            Box {
-                                Tool(
-                                    Icons.Rounded.AddPhotoAlternate,
-                                    tr("Insert", "जोड़ें"),
-                                    enabled = ready,
-                                ) {
-                                    media = true
-                                }
-                            }
-                            Box {
-                                Tool(
-                                    Icons.Rounded.MoreHoriz,
-                                    tr("Edit & save", "संपादन"),
-                                    enabled = ready,
-                                ) {
-                                    more = true
-                                }
-                                DropdownMenu(more, { more = false }) {
-                                    listOf(
-                                            "copy" to tr("Copy", "कॉपी"),
-                                            "cut" to tr("Cut", "काटें"),
-                                            "paste" to tr("Paste", "चिपकाएँ"),
-                                            "selectAll" to tr("Select all", "सभी चुनें"),
-                                            "date" to tr("Insert date", "दिनांक जोड़ें"),
-                                            "pageBreak" to
-                                                tr("Insert page break", "नया पेज जोड़ें"),
-                                            "clear" to tr("Clear formatting", "फ़ॉर्मैट हटाएँ"),
-                                            "save" to tr("Save now", "अभी सहेजें"),
-                                        )
-                                        .forEach { (command, label) ->
-                                            DropdownMenuItem(
-                                                text = { Text(label) },
-                                                onClick = {
-                                                    more = false
-                                                    when (command) {
-                                                        "paste" -> {
-                                                            val clip =
-                                                                context.getSystemService(
-                                                                    Context.CLIPBOARD_SERVICE
-                                                                ) as ClipboardManager
-                                                            host?.command(
-                                                                "paste",
-                                                                clip.primaryClip
-                                                                    ?.getItemAt(0)
-                                                                    ?.coerceToText(context)
-                                                                    ?.toString() ?: "",
-                                                            )
-                                                        }
-                                                        "save" -> {
-                                                            host?.snapshot {
-                                                                if (it != null)
-                                                                    model.edit(it, document.id)
-                                                                model.save()
-                                                            }
-                                                        }
-                                                        else -> host?.command(command)
-                                                    }
-                                                },
-                                            )
+                            more = true
+                        }
+                        DropdownMenu(more, { more = false }) {
+                            listOf(
+                                "copy" to tr("Copy", "कॉपी"),
+                                "cut" to tr("Cut", "काटें"),
+                                "paste" to tr("Paste", "चिपकाएँ"),
+                                "selectAll" to tr("Select all", "सभी चुनें"),
+                                "date" to tr("Insert date", "दिनांक जोड़ें"),
+                                "pageBreak" to tr("Insert page break", "नया पेज जोड़ें"),
+                                "clear" to tr("Clear formatting", "फ़ॉर्मैट हटाएँ"),
+                                "save" to tr("Save now", "अभी सहेजें"),
+                            ).forEach { (command, label) ->
+                                DropdownMenuItem(
+                                    text = { Text(label) },
+                                    onClick = {
+                                        more = false
+                                        when (command) {
+                                            "paste" -> {
+                                                val clip =
+                                                    context.getSystemService(
+                                                        Context.CLIPBOARD_SERVICE
+                                                    ) as ClipboardManager
+                                                host?.command(
+                                                    "paste",
+                                                    clip.primaryClip
+                                                        ?.getItemAt(0)
+                                                        ?.coerceToText(context)
+                                                        ?.toString() ?: "",
+                                                )
+                                            }
+                                            "save" -> {
+                                                host?.snapshot {
+                                                    if (it != null)
+                                                        model.edit(it, document.id)
+                                                    model.save()
+                                                }
+                                            }
+                                            else -> host?.command(command)
                                         }
-                                }
+                                    },
+                                )
                             }
                         }
                     }
                 }
+            }
             HorizontalDivider()
+            // Document writing canvas
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 AndroidView(
                     factory = { ctx ->
@@ -423,7 +332,6 @@ fun EditorScreen(
                                 when (message.optString("type")) {
                                     "ready" -> {
                                         ready = true
-                                        if (pages) host?.setMode(true)
                                     }
                                     "change" ->
                                         model.edit(
@@ -461,6 +369,68 @@ fun EditorScreen(
                     },
                 )
                 if (!ready) CircularProgressIndicator(Modifier.align(Alignment.Center))
+            }
+            HorizontalDivider()
+            // Bottom Action Bar: Page stats + Next: Preview & PDF
+            Surface(
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 3.dp,
+                shadowElevation = 8.dp,
+            ) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        shape = MaterialTheme.shapes.small,
+                    ) {
+                        Row(
+                            Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                Icons.Rounded.Description,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                "$pageCount ${tr("page(s)", "पेज")}",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                    }
+
+                    Button(
+                        onClick = {
+                            host?.snapshot {
+                                if (it != null) {
+                                    model.edit(it, document.id)
+                                    model.save()
+                                    exportWithNotification()
+                                }
+                            }
+                        },
+                        enabled = ready,
+                        shape = MaterialTheme.shapes.medium,
+                        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 10.dp),
+                    ) {
+                        Icon(Icons.Rounded.Visibility, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            tr("Next: Preview & PDF →", "आगे बढ़ें: प्रीव्यू और PDF →"),
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                        )
+                    }
+                }
             }
         }
     }
