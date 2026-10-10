@@ -1,4 +1,4 @@
-﻿package com.a4sizepaper.typing.texttopdf.ui
+package com.a4sizepaper.typing.texttopdf.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.*
@@ -17,6 +17,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
@@ -51,546 +52,567 @@ fun LekhakApp(model: MainViewModel) {
         }
         return
     }
-    LekhakTheme(p.theme, p.language) {
-        val docs by model.documents.collectAsStateWithLifecycle()
-        val current by model.current.collectAsStateWithLifecycle()
-        val error by model.error.collectAsStateWithLifecycle()
-        val pdf by model.pdf.collectAsStateWithLifecycle()
-        val exporting by model.exporting.collectAsStateWithLifecycle()
-        var tab by rememberSaveable { mutableStateOf("home") }
-        var screen by rememberSaveable { mutableStateOf("main") }
-        var selectedTemplate by rememberSaveable { mutableStateOf<String?>(null) }
-        var search by rememberSaveable { mutableStateOf("") }
-        var searchPopup by rememberSaveable { mutableStateOf(false) }
-        var sort by rememberSaveable { mutableStateOf("modified") }
-        var rename by remember { mutableStateOf<DocumentEntry?>(null) }
-        var delete by remember { mutableStateOf<DocumentEntry?>(null) }
-        var pageSetup by remember { mutableStateOf(false) }
-        var defaultsSetup by remember { mutableStateOf(false) }
-        var info by remember { mutableStateOf<String?>(null) }
-        var awaitingPdf by rememberSaveable { mutableStateOf(false) }
-        var pdfReturnScreen by rememberSaveable { mutableStateOf("main") }
+    CompositionLocalProvider(LocalDocumentPreview provides model::previewParagraphs) {
+        LekhakTheme(p.theme, p.language) {
+            val docs by model.documents.collectAsStateWithLifecycle()
+            val current by model.current.collectAsStateWithLifecycle()
+            val error by model.error.collectAsStateWithLifecycle()
+            val pdf by model.pdf.collectAsStateWithLifecycle()
+            val exporting by model.exporting.collectAsStateWithLifecycle()
+            var tab by rememberSaveable { mutableStateOf("home") }
+            var screen by rememberSaveable { mutableStateOf("main") }
+            var selectedTemplate by rememberSaveable { mutableStateOf<String?>(null) }
+            var search by rememberSaveable { mutableStateOf("") }
+            var searchPopup by rememberSaveable { mutableStateOf(false) }
+            var sort by rememberSaveable { mutableStateOf("modified") }
+            var rename by remember { mutableStateOf<DocumentEntry?>(null) }
+            var delete by remember { mutableStateOf<DocumentEntry?>(null) }
+            var pageSetup by remember { mutableStateOf(false) }
+            var defaultsSetup by remember { mutableStateOf(false) }
+            var info by remember { mutableStateOf<String?>(null) }
+            var awaitingPdf by rememberSaveable { mutableStateOf(false) }
+            var pdfReturnScreen by rememberSaveable { mutableStateOf("main") }
 
-        BackHandler(enabled = screen == "main" && tab != "home") {
-            tab = "home"
-            search = ""
-        }
-
-        LaunchedEffect(pdf, exporting) {
-            if (awaitingPdf && pdf != null && !exporting) {
-                screen = "pdf"
-                awaitingPdf = false
+            BackHandler(enabled = screen == "main" && tab != "home") {
+                tab = "home"
+                search = ""
             }
-        }
-        LaunchedEffect(current) { if (screen == "editor" && current == null) screen = "main" }
-        if (!p.onboarded) {
-            Onboarding { model.preferences(p.copy(onboarded = true)) }
-            return@LekhakTheme
-        }
-        if (screen == "editor" && current != null) {
-            EditorScreen(
-                model,
-                current!!,
-                p,
-                onBack = { screen = "main" },
-                onSetup = { pageSetup = true },
-                onExport = {
-                    if (model.export()) {
-                        pdfReturnScreen = "editor"
-                        awaitingPdf = true
-                    }
-                },
-            )
-        } else if (screen == "pdf" && pdf != null) {
-            PdfScreen(
-                pdf!!,
-                onBack = {
-                    screen =
-                        if (pdfReturnScreen == "editor" && current != null) "editor" else "main"
-                },
-            )
-        } else if (selectedTemplate != null) {
-            TemplatePreview(
-                Templates.all.first { it.id == selectedTemplate },
-                onBack = { selectedTemplate = null },
-            ) { template, fields ->
-                model.create(template, fields) {
-                    selectedTemplate = null
-                    screen = "editor"
+
+            LaunchedEffect(pdf, exporting) {
+                if (awaitingPdf && pdf != null && !exporting) {
+                    screen = "pdf"
+                    awaitingPdf = false
                 }
             }
-        } else {
-            val visible =
-                docs
-                    .filter { it.title.contains(search, true) }
-                    .let {
-                        if (sort == "name") it.sortedBy { d -> d.title.lowercase() }
-                        else if (sort == "created") it.sortedByDescending { d -> d.createdAt }
-                        else it
-                    }
-            val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior()
-            Scaffold(
-                modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
-                topBar = {
-                    if (tab == "home") {
-                        TopAppBar(
-                            title = {
-                                Column {
-                                    Text("A4 Paper Typing", fontWeight = FontWeight.Bold)
-                                    Text(
-                                        tr(
-                                            "A little space for your ideas",
-                                            "आपके विचारों के लिए एक जगह",
-                                        ),
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                            },
-                            actions = {
-                                IconButton(onClick = { searchPopup = true }) {
-                                    Icon(
-                                        Icons.Rounded.Search,
-                                        contentDescription = tr("Search", "खोजें"),
-                                    )
-                                }
-                            },
-                            scrollBehavior = scrollBehavior,
-                        )
-                    }
-                },
-                bottomBar = {
-                    HomeNavigation(tab) { selected ->
-                        tab = selected
-                        search = ""
-                    }
-                },
-                floatingActionButton = {
-                    if (tab == "documents")
-                        ExtendedFloatingActionButton(
-                            onClick = { model.create { screen = "editor" } },
-                            icon = { Icon(Icons.Rounded.Add, null) },
-                            text = { Text(tr("New document", "नया दस्तावेज़")) },
-                        )
-                },
-            ) { padding ->
-                LazyColumn(
-                    Modifier.fillMaxSize().padding(padding),
-                    contentPadding =
-                        PaddingValues(
-                            start = if (tab == "home") 0.dp else 20.dp,
-                            end = if (tab == "home") 0.dp else 20.dp,
-                            top = 10.dp,
-                            bottom = if (tab == "documents") 100.dp else 24.dp,
-                        ),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                ) {
-                    if (tab == "home") {
-                        insetItem { HeroCard { model.create { screen = "editor" } } }
-                        insetItem {
-                            SectionHeading(
-                                tr("Start with a template", "टेम्पलेट से शुरू करें"),
-                                tr("View all", "सभी देखें"),
-                            ) {
-                                tab = "templates"
-                            }
-                        }
-                        item {
-                            LazyRow(
-                                modifier = Modifier.fillMaxWidth(),
-                                contentPadding = PaddingValues(horizontal = 20.dp),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            ) {
-                                items(Templates.all.take(4), key = { it.id }) { template ->
-                                    TemplateCard(template, Modifier.width(168.dp)) {
-                                        selectedTemplate = template.id
-                                    }
-                                }
-                            }
-                        }
-                        insetItem {
-                            SectionHeading(
-                                tr("Recent documents", "हाल के दस्तावेज़"),
-                                tr("View all", "सभी देखें"),
-                            ) {
-                                tab = "documents"
-                            }
-                        }
-                        if (docs.isEmpty()) insetItem { EmptyState(false) }
-                        items(docs.take(6), key = { it.id }) { doc ->
-                            DocumentCard(
-                                doc,
-                                { model.open(doc.id) { screen = "editor" } },
-                                {
-                                    model.open(doc.id) {
-                                        if (model.export()) {
-                                            pdfReturnScreen = "main"
-                                            awaitingPdf = true
-                                        }
-                                    }
-                                },
-                                { rename = doc },
-                                { model.duplicate(doc) },
-                                { delete = doc },
-                                modifier = Modifier.padding(horizontal = 20.dp),
-                            )
-                        }
-                    }
-                    if (tab == "templates") {
-                        val filteredTemplates =
-                            Templates.all.filter { (it.name + it.category).contains(search, true) }
-                        item {
-                            Text(
-                                tr("A head start, every time.", "हर बार एक अच्छी शुरुआत।"),
-                                style = MaterialTheme.typography.headlineMedium,
-                                fontWeight = FontWeight.Bold,
-                            )
-                        }
-                        item {
-                            Text(
-                                tr(
-                                    "16 editable templates • Make them yours",
-                                    "16 संपादन योग्य टेम्पलेट • अपने अनुसार बदलें",
-                                ),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        item { SearchBox(search, { search = it }, isTemplates = true) }
-                        if (filteredTemplates.isEmpty()) {
-                            item { EmptyState(searching = true) }
-                        }
-                        items(filteredTemplates.chunked(2)) { row ->
-                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                row.forEach { template ->
-                                    TemplateCard(template, Modifier.weight(1f)) {
-                                        selectedTemplate = template.id
-                                    }
-                                }
-                                if (row.size == 1) Spacer(Modifier.weight(1f))
-                            }
-                        }
-                    }
-                    if (tab == "documents") {
-                        item {
-                            Text(
-                                tr("Your writing, together.", "आपके सभी दस्तावेज़।"),
-                                style = MaterialTheme.typography.headlineMedium,
-                                fontWeight = FontWeight.Bold,
-                            )
-                        }
-                        item { SearchBox(search, { search = it }) }
-                        item {
-                            Row(
-                                Modifier.horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                listOf(
-                                        "modified" to tr("Last edited", "हाल में बदले"),
-                                        "created" to tr("Newest", "नवीनतम"),
-                                        "name" to tr("Title", "शीर्षक"),
-                                    )
-                                    .forEach { (key, label) ->
-                                        FilterChip(
-                                            sort == key,
-                                            { sort = key },
-                                            label = { Text(label) },
-                                        )
-                                    }
-                            }
-                        }
-                        if (visible.isEmpty()) item { EmptyState(search.isNotEmpty()) }
-                        items(visible, key = { it.id }) { doc ->
-                            DocumentCard(
-                                doc,
-                                { model.open(doc.id) { screen = "editor" } },
-                                {
-                                    model.open(doc.id) {
-                                        if (model.export()) {
-                                            pdfReturnScreen = "main"
-                                            awaitingPdf = true
-                                        }
-                                    }
-                                },
-                                { rename = doc },
-                                { model.duplicate(doc) },
-                                { delete = doc },
-                            )
-                        }
-                    }
-                    if (tab == "settings") {
-                        item {
-                            Text(
-                                tr("Make yourself at home.", "अपनी पसंद की सेटिंग।"),
-                                style = MaterialTheme.typography.headlineMedium,
-                                fontWeight = FontWeight.Bold,
-                            )
-                        }
-                        item {
-                            SettingsCard(tr("App language", "ऐप की भाषा")) {
-                                ChoiceRow(listOf("en" to "English", "hi" to "हिंदी"), p.language) {
-                                    model.preferences(p.copy(language = it))
-                                }
-                            }
-                        }
-                        item {
-                            SettingsCard(tr("Appearance", "थीम")) {
-                                ChoiceRow(
-                                    listOf(
-                                        "system" to tr("System", "सिस्टम"),
-                                        "light" to tr("Light", "लाइट"),
-                                        "dark" to tr("Dark", "डार्क"),
-                                    ),
-                                    p.theme,
-                                ) {
-                                    model.preferences(p.copy(theme = it))
-                                }
-                            }
-                        }
-                        item {
-                            SettingsCard(tr("Documents", "दस्तावेज़")) {
-                                Text(tr("Paper: A4 · 210 × 297 mm", "कागज़: A4 · 210 × 297 मिमी"))
-                                Text(
-                                    "${p.defaults.fontFamily} · ${p.defaults.fontSize} pt · ${p.defaults.lineHeight}×",
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                TextButton(onClick = { defaultsSetup = true }) {
-                                    Text(
-                                        tr(
-                                            "Default margins & typography",
-                                            "डिफ़ॉल्ट मार्जिन और फ़ॉन्ट",
-                                        )
-                                    )
-                                }
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Column(Modifier.weight(1f)) {
-                                        Text(tr("Autosave", "अपने आप सहेजें"))
-                                        Text(
-                                            tr(
-                                                "Draft recovery stays on even with autosave off.",
-                                                "ऑटोसहेज बंद होने पर भी ड्राफ़्ट सुरक्षित रहता है।",
-                                            ),
-                                            style = MaterialTheme.typography.bodySmall,
-                                        )
-                                    }
-                                    Switch(p.autosave, { model.preferences(p.copy(autosave = it)) })
-                                }
-                                TextButton(onClick = { tab = "documents" }) {
-                                    Text(tr("Manage documents", "दस्तावेज़ प्रबंधन"))
-                                }
-                            }
-                        }
-                        item {
-                            SettingsCard(tr("About A4 Paper Typing", "A4 Paper Typing के बारे में")) {
-                                TextButton(onClick = { info = "privacy" }) {
-                                    Text(tr("Privacy policy", "गोपनीयता नीति"))
-                                }
-                                TextButton(
-                                    onClick = {
-                                        try {
-                                            context.startActivity(
-                                                android.content
-                                                    .Intent(
-                                                        android.content.Intent.ACTION_SENDTO,
-                                                        android.net.Uri.fromParts(
-                                                            "mailto",
-                                                            "AMAKUNAR.IN@GMAIL.COM",
-                                                            null,
-                                                        ),
-                                                    )
-                                                    .putExtra(
-                                                        android.content.Intent.EXTRA_SUBJECT,
-                                                        "A4 Paper Typing support",
-                                                    )
-                                            )
-                                        } catch (_: android.content.ActivityNotFoundException) {
-                                            model.error.value = "Email: AMAKUNAR.IN@GMAIL.COM"
-                                        }
-                                    }
-                                ) {
-                                    Text(tr("Contact support", "सहायता से संपर्क करें"))
-                                }
-                                TextButton(onClick = { info = "about" }) {
-                                    Text(tr("App information & licenses", "ऐप जानकारी और लाइसेंस"))
-                                }
-                                if (pdf != null)
-                                    TextButton(onClick = { screen = "pdf" }) {
-                                        Text(
-                                            tr(
-                                                "Open latest exported PDF",
-                                                "आखिरी निर्यात किया PDF खोलें",
-                                            )
-                                        )
-                                    }
-                            }
-                        }
-                    }
-                }
+            LaunchedEffect(current) { if (screen == "editor" && current == null) screen = "main" }
+            if (!p.onboarded) {
+                Onboarding { model.preferences(p.copy(onboarded = true)) }
+                return@LekhakTheme
             }
-        }
-        if (searchPopup) {
-            SearchPopup(
-                docs = docs,
-                onDismiss = { searchPopup = false },
-                onOpenDoc = { doc ->
-                    searchPopup = false
-                    model.open(doc.id) { screen = "editor" }
-                },
-                onShareDoc = { doc ->
-                    searchPopup = false
-                    model.open(doc.id) {
+            if (screen == "editor" && current != null) {
+                EditorScreen(
+                    model,
+                    current!!,
+                    p,
+                    onBack = { screen = "main" },
+                    onSetup = { pageSetup = true },
+                    onExport = {
                         if (model.export()) {
-                            pdfReturnScreen = "main"
+                            pdfReturnScreen = "editor"
                             awaitingPdf = true
                         }
+                    },
+                )
+            } else if (screen == "pdf" && pdf != null) {
+                PdfScreen(
+                    pdf!!,
+                    onBack = {
+                        screen =
+                            if (pdfReturnScreen == "editor" && current != null) "editor" else "main"
+                    },
+                )
+            } else if (selectedTemplate != null) {
+                TemplatePreview(
+                    Templates.all.first { it.id == selectedTemplate },
+                    onBack = { selectedTemplate = null },
+                ) { template, fields ->
+                    model.create(template, fields) {
+                        selectedTemplate = null
+                        screen = "editor"
                     }
-                },
-                onRenameDoc = { doc -> rename = doc },
-                onDuplicateDoc = { doc -> model.duplicate(doc) },
-                onDeleteDoc = { doc -> delete = doc },
-                onSelectTemplate = { template ->
-                    searchPopup = false
-                    selectedTemplate = template.id
-                },
-            )
-        }
-        if (pageSetup && current != null)
-            PageSetupDialog(current!!.page, onDismiss = { pageSetup = false }) {
-                model.page(it)
-                pageSetup = false
-            }
-        if (defaultsSetup)
-            PageSetupDialog(p.defaults, onDismiss = { defaultsSetup = false }) {
-                model.preferences(p.copy(defaults = it))
-                defaultsSetup = false
-            }
-        rename?.let { doc ->
-            var value by remember(doc.id) { mutableStateOf(doc.title) }
-            AlertDialog(
-                onDismissRequest = { rename = null },
-                title = { Text(tr("Rename document", "नाम बदलें")) },
-                text = {
-                    OutlinedTextField(
-                        value,
-                        { value = it },
-                        label = { Text(tr("Title", "शीर्षक")) },
-                        singleLine = true,
-                    )
-                },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            model.rename(doc, value)
-                            rename = null
+                }
+            } else {
+                val visible =
+                    docs
+                        .filter { it.title.contains(search, true) }
+                        .let {
+                            if (sort == "name") it.sortedBy { d -> d.title.lowercase() }
+                            else if (sort == "created") it.sortedByDescending { d -> d.createdAt }
+                            else it
                         }
+                val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior()
+                Scaffold(
+                    modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+                    topBar = {
+                        if (tab == "home") {
+                            TopAppBar(
+                                title = {
+                                    Column {
+                                        Text("A4 Paper Typing", fontWeight = FontWeight.Bold)
+                                        Text(
+                                            tr(
+                                                "A little space for your ideas",
+                                                "आपके विचारों के लिए एक जगह",
+                                            ),
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                },
+                                actions = {
+                                    IconButton(onClick = { searchPopup = true }) {
+                                        Icon(
+                                            Icons.Rounded.Search,
+                                            contentDescription = tr("Search", "खोजें"),
+                                        )
+                                    }
+                                },
+                                scrollBehavior = scrollBehavior,
+                            )
+                        }
+                    },
+                    bottomBar = {
+                        HomeNavigation(tab) { selected ->
+                            tab = selected
+                            search = ""
+                        }
+                    },
+                    floatingActionButton = {
+                        if (tab == "documents")
+                            ExtendedFloatingActionButton(
+                                onClick = { model.create { screen = "editor" } },
+                                icon = { Icon(Icons.Rounded.Add, null) },
+                                text = { Text(tr("New document", "नया दस्तावेज़")) },
+                            )
+                    },
+                ) { padding ->
+                    LazyColumn(
+                        Modifier.fillMaxSize().padding(padding),
+                        contentPadding =
+                            PaddingValues(
+                                start = if (tab == "home") 0.dp else 20.dp,
+                                end = if (tab == "home") 0.dp else 20.dp,
+                                top = 10.dp,
+                                bottom = if (tab == "documents") 100.dp else 24.dp,
+                            ),
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
-                        Text(tr("Save", "सहेजें"))
+                        if (tab == "home") {
+                            insetItem { HeroCard { model.create { screen = "editor" } } }
+                            insetItem {
+                                SectionHeading(
+                                    tr("Start with a template", "टेम्पलेट से शुरू करें"),
+                                    tr("View all", "सभी देखें"),
+                                ) {
+                                    tab = "templates"
+                                }
+                            }
+                            item {
+                                LazyRow(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    contentPadding = PaddingValues(horizontal = 20.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                ) {
+                                    items(Templates.all.take(4), key = { it.id }) { template ->
+                                        TemplateCard(template, Modifier.width(152.dp)) {
+                                            selectedTemplate = template.id
+                                        }
+                                    }
+                                }
+                            }
+                            insetItem {
+                                SectionHeading(
+                                    tr("Recent documents", "हाल के दस्तावेज़"),
+                                    tr("View all", "सभी देखें"),
+                                ) {
+                                    tab = "documents"
+                                }
+                            }
+                            if (docs.isEmpty()) insetItem { EmptyState(false) }
+                            items(docs.take(6), key = { it.id }) { doc ->
+                                DocumentCard(
+                                    doc,
+                                    { model.open(doc.id) { screen = "editor" } },
+                                    {
+                                        model.open(doc.id) {
+                                            if (model.export()) {
+                                                pdfReturnScreen = "main"
+                                                awaitingPdf = true
+                                            }
+                                        }
+                                    },
+                                    { rename = doc },
+                                    { model.duplicate(doc) },
+                                    { delete = doc },
+                                    modifier = Modifier.padding(horizontal = 20.dp),
+                                )
+                            }
+                        }
+                        if (tab == "templates") {
+                            val filteredTemplates =
+                                Templates.all.filter {
+                                    (it.name + it.category).contains(search, true)
+                                }
+                            item {
+                                Text(
+                                    tr("A head start, every time.", "हर बार एक अच्छी शुरुआत।"),
+                                    style = MaterialTheme.typography.headlineMedium,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+                            item {
+                                Text(
+                                    tr(
+                                        "16 editable templates • Make them yours",
+                                        "16 संपादन योग्य टेम्पलेट • अपने अनुसार बदलें",
+                                    ),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            item { SearchBox(search, { search = it }, isTemplates = true) }
+                            if (filteredTemplates.isEmpty()) {
+                                item { EmptyState(searching = true) }
+                            }
+                            items(filteredTemplates.chunked(2)) { row ->
+                                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    row.forEach { template ->
+                                        TemplateCard(template, Modifier.weight(1f)) {
+                                            selectedTemplate = template.id
+                                        }
+                                    }
+                                    if (row.size == 1) Spacer(Modifier.weight(1f))
+                                }
+                            }
+                        }
+                        if (tab == "documents") {
+                            item {
+                                Text(
+                                    tr("Your writing, together.", "आपके सभी दस्तावेज़।"),
+                                    style = MaterialTheme.typography.headlineMedium,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+                            item { SearchBox(search, { search = it }) }
+                            item {
+                                Row(
+                                    Modifier.horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    listOf(
+                                            "modified" to tr("Last edited", "हाल में बदले"),
+                                            "created" to tr("Newest", "नवीनतम"),
+                                            "name" to tr("Title", "शीर्षक"),
+                                        )
+                                        .forEach { (key, label) ->
+                                            FilterChip(
+                                                sort == key,
+                                                { sort = key },
+                                                label = { Text(label) },
+                                            )
+                                        }
+                                }
+                            }
+                            if (visible.isEmpty()) item { EmptyState(search.isNotEmpty()) }
+                            items(visible, key = { it.id }) { doc ->
+                                DocumentCard(
+                                    doc,
+                                    { model.open(doc.id) { screen = "editor" } },
+                                    {
+                                        model.open(doc.id) {
+                                            if (model.export()) {
+                                                pdfReturnScreen = "main"
+                                                awaitingPdf = true
+                                            }
+                                        }
+                                    },
+                                    { rename = doc },
+                                    { model.duplicate(doc) },
+                                    { delete = doc },
+                                )
+                            }
+                        }
+                        if (tab == "settings") {
+                            item {
+                                Text(
+                                    tr("Make yourself at home.", "अपनी पसंद की सेटिंग।"),
+                                    style = MaterialTheme.typography.headlineMedium,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+                            item {
+                                SettingsCard(tr("App language", "ऐप की भाषा")) {
+                                    ChoiceRow(
+                                        listOf("en" to "English", "hi" to "हिंदी"),
+                                        p.language,
+                                    ) {
+                                        model.preferences(p.copy(language = it))
+                                    }
+                                }
+                            }
+                            item {
+                                SettingsCard(tr("Appearance", "थीम")) {
+                                    ChoiceRow(
+                                        listOf(
+                                            "system" to tr("System", "सिस्टम"),
+                                            "light" to tr("Light", "लाइट"),
+                                            "dark" to tr("Dark", "डार्क"),
+                                        ),
+                                        p.theme,
+                                    ) {
+                                        model.preferences(p.copy(theme = it))
+                                    }
+                                }
+                            }
+                            item {
+                                SettingsCard(tr("Documents", "दस्तावेज़")) {
+                                    Text(
+                                        tr("Paper: A4 · 210 × 297 mm", "कागज़: A4 · 210 × 297 मिमी")
+                                    )
+                                    Text(
+                                        "${p.defaults.fontFamily} · ${p.defaults.fontSize} pt · ${p.defaults.lineHeight}×",
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    TextButton(onClick = { defaultsSetup = true }) {
+                                        Text(
+                                            tr(
+                                                "Default margins & typography",
+                                                "डिफ़ॉल्ट मार्जिन और फ़ॉन्ट",
+                                            )
+                                        )
+                                    }
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Column(Modifier.weight(1f)) {
+                                            Text(tr("Autosave", "अपने आप सहेजें"))
+                                            Text(
+                                                tr(
+                                                    "Draft recovery stays on even with autosave off.",
+                                                    "ऑटोसहेज बंद होने पर भी ड्राफ़्ट सुरक्षित रहता है।",
+                                                ),
+                                                style = MaterialTheme.typography.bodySmall,
+                                            )
+                                        }
+                                        Switch(
+                                            p.autosave,
+                                            { model.preferences(p.copy(autosave = it)) },
+                                        )
+                                    }
+                                    TextButton(onClick = { tab = "documents" }) {
+                                        Text(tr("Manage documents", "दस्तावेज़ प्रबंधन"))
+                                    }
+                                }
+                            }
+                            item {
+                                SettingsCard(
+                                    tr("About A4 Paper Typing", "A4 Paper Typing के बारे में")
+                                ) {
+                                    TextButton(onClick = { info = "privacy" }) {
+                                        Text(tr("Privacy policy", "गोपनीयता नीति"))
+                                    }
+                                    TextButton(
+                                        onClick = {
+                                            try {
+                                                context.startActivity(
+                                                    android.content
+                                                        .Intent(
+                                                            android.content.Intent.ACTION_SENDTO,
+                                                            android.net.Uri.fromParts(
+                                                                "mailto",
+                                                                "AMAKUNAR.IN@GMAIL.COM",
+                                                                null,
+                                                            ),
+                                                        )
+                                                        .putExtra(
+                                                            android.content.Intent.EXTRA_SUBJECT,
+                                                            "A4 Paper Typing support",
+                                                        )
+                                                )
+                                            } catch (_: android.content.ActivityNotFoundException) {
+                                                model.error.value = "Email: AMAKUNAR.IN@GMAIL.COM"
+                                            }
+                                        }
+                                    ) {
+                                        Text(tr("Contact support", "सहायता से संपर्क करें"))
+                                    }
+                                    TextButton(onClick = { info = "about" }) {
+                                        Text(
+                                            tr(
+                                                "App information & licenses",
+                                                "ऐप जानकारी और लाइसेंस",
+                                            )
+                                        )
+                                    }
+                                    if (pdf != null)
+                                        TextButton(onClick = { screen = "pdf" }) {
+                                            Text(
+                                                tr(
+                                                    "Open latest exported PDF",
+                                                    "आखिरी निर्यात किया PDF खोलें",
+                                                )
+                                            )
+                                        }
+                                }
+                            }
+                        }
                     }
-                },
-                dismissButton = {
-                    TextButton(onClick = { rename = null }) { Text(tr("Cancel", "रद्द करें")) }
-                },
-            )
-        }
-        delete?.let { doc ->
-            AlertDialog(
-                onDismissRequest = { delete = null },
-                title = { Text(tr("Delete document?", "दस्तावेज़ हटाएँ?")) },
-                text = {
-                    Text(
-                        tr(
-                            "“${doc.title}” will be removed from this device. Previously exported PDFs are kept.",
-                            "“${doc.title}” इस डिवाइस से हट जाएगा। निर्यात किए गए PDF बने रहेंगे।",
+                }
+            }
+            if (searchPopup) {
+                SearchPopup(
+                    docs = docs,
+                    onDismiss = { searchPopup = false },
+                    onOpenDoc = { doc ->
+                        searchPopup = false
+                        model.open(doc.id) { screen = "editor" }
+                    },
+                    onShareDoc = { doc ->
+                        searchPopup = false
+                        model.open(doc.id) {
+                            if (model.export()) {
+                                pdfReturnScreen = "main"
+                                awaitingPdf = true
+                            }
+                        }
+                    },
+                    onRenameDoc = { doc -> rename = doc },
+                    onDuplicateDoc = { doc -> model.duplicate(doc) },
+                    onDeleteDoc = { doc -> delete = doc },
+                    onSelectTemplate = { template ->
+                        searchPopup = false
+                        selectedTemplate = template.id
+                    },
+                )
+            }
+            if (pageSetup && current != null)
+                PageSetupDialog(current!!.page, onDismiss = { pageSetup = false }) {
+                    model.page(it)
+                    pageSetup = false
+                }
+            if (defaultsSetup)
+                PageSetupDialog(p.defaults, onDismiss = { defaultsSetup = false }) {
+                    model.preferences(p.copy(defaults = it))
+                    defaultsSetup = false
+                }
+            rename?.let { doc ->
+                var value by remember(doc.id) { mutableStateOf(doc.title) }
+                AlertDialog(
+                    onDismissRequest = { rename = null },
+                    title = { Text(tr("Rename document", "नाम बदलें")) },
+                    text = {
+                        OutlinedTextField(
+                            value,
+                            { value = it },
+                            label = { Text(tr("Title", "शीर्षक")) },
+                            singleLine = true,
                         )
-                    )
-                },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            model.delete(doc)
-                            delete = null
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                model.rename(doc, value)
+                                rename = null
+                            }
+                        ) {
+                            Text(tr("Save", "सहेजें"))
                         }
-                    ) {
-                        Text(tr("Delete", "हटाएँ"), color = MaterialTheme.colorScheme.error)
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { delete = null }) { Text(tr("Cancel", "रद्द करें")) }
-                },
-            )
-        }
-        if (exporting)
-            AlertDialog(
-                onDismissRequest = {},
-                title = { Text(tr("Preparing your PDF", "आपका PDF बन रहा है")) },
-                text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                        LinearProgressIndicator(Modifier.fillMaxWidth())
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { rename = null }) { Text(tr("Cancel", "रद्द करें")) }
+                    },
+                )
+            }
+            delete?.let { doc ->
+                AlertDialog(
+                    onDismissRequest = { delete = null },
+                    title = { Text(tr("Delete document?", "दस्तावेज़ हटाएँ?")) },
+                    text = {
                         Text(
                             tr(
-                                "Laying out pages and checking the actual PDF. This continues in the background.",
-                                "पेज तैयार हो रहे हैं और PDF जाँचा जा रहा है। यह पृष्ठभूमि में जारी रहेगा।",
+                                "“${doc.title}” will be removed from this device. Previously exported PDFs are kept.",
+                                "“${doc.title}” इस डिवाइस से हट जाएगा। निर्यात किए गए PDF बने रहेंगे।",
                             )
                         )
-                    }
-                },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            awaitingPdf = false
-                            model.cancelExport()
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                model.delete(doc)
+                                delete = null
+                            }
+                        ) {
+                            Text(tr("Delete", "हटाएँ"), color = MaterialTheme.colorScheme.error)
                         }
-                    ) {
-                        Text(tr("Cancel export", "निर्यात रद्द करें"))
-                    }
-                },
-            )
-        error?.let { message ->
-            AlertDialog(
-                onDismissRequest = { model.error.value = null },
-                title = { Text(tr("Something needs attention", "ध्यान दें")) },
-                text = { Text(message) },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            model.error.value = null
-                            awaitingPdf = false
-                        }
-                    ) {
-                        Text(tr("OK", "ठीक है"))
-                    }
-                },
-            )
-        }
-        info?.let { kind ->
-            AlertDialog(
-                onDismissRequest = { info = null },
-                title = {
-                    Text(
-                        if (kind == "privacy") tr("Privacy policy", "गोपनीयता नीति")
-                        else "A4 Paper Typing ${com.a4sizepaper.typing.texttopdf.BuildConfig.VERSION_NAME}"
-                    )
-                },
-                text = {
-                    Text(
-                        modifier =
-                            Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
-                        text =
-                            if (kind == "privacy")
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { delete = null }) { Text(tr("Cancel", "रद्द करें")) }
+                    },
+                )
+            }
+            if (exporting)
+                AlertDialog(
+                    onDismissRequest = {},
+                    title = { Text(tr("Preparing your PDF", "आपका PDF बन रहा है")) },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                            LinearProgressIndicator(Modifier.fillMaxWidth())
+                            Text(
                                 tr(
-                                    "A4 Paper Typing — AMAN KUMAR\nUpdated 10 October 2026\nContact: AMAKUNAR.IN@GMAIL.COM\n\nDocuments, selected photos and PDFs are processed on this device. No account, analytics, ads or document uploads. The app requests no Internet permission.\n\nPhoto Picker grants access only to images you choose. A private resized copy is stored; image metadata is removed. Notification permission is optional and shows PDF export progress.\n\nFiles leave the app when you choose Save as, Share or Print. The selected app, cloud provider or printer handles that copy under its own policy. We do not receive your documents.\n\nDelete documents within the app. Unused images can be removed after a 24-hour grace period at a later startup. Each document’s latest private PDF is retained; earlier PDFs can be removed after seven days. Clearing app storage or uninstalling removes private files. Copies saved elsewhere must be deleted there. Save important PDFs outside the app before uninstalling.\n\nIf you email support, your email address and message are handled to answer your request. Do not send sensitive documents unless necessary; contact us to request deletion of support correspondence. We do not sell your information.",
-                                    "A4 Paper Typing — AMAN KUMAR\nअपडेट: 10 अक्टूबर 2026\nसंपर्क: AMAKUNAR.IN@GMAIL.COM\n\nदस्तावेज़, चुनी हुई तस्वीरें और PDF इसी डिवाइस पर बनते हैं। लॉगिन, विज्ञापन, एनालिटिक्स या दस्तावेज़ अपलोड नहीं हैं। ऐप इंटरनेट अनुमति नहीं माँगता।\n\nPhoto Picker से केवल आपकी चुनी हुई तस्वीर की निजी कॉपी बनती है; तस्वीर का मेटाडेटा हटाया जाता है। PDF की प्रगति दिखाने की notification अनुमति वैकल्पिक है।\n\nSave as, Share या Print करने पर चुना हुआ ऐप, क्लाउड प्रदाता या प्रिंटर आपकी कॉपी संभालता है। हमें दस्तावेज़ प्राप्त नहीं होते।\n\nदस्तावेज़ ऐप में हटा सकते हैं। अनुपयोगी तस्वीरें 24 घंटे बाद अगले startup पर साफ हो सकती हैं। हर दस्तावेज़ की नई PDF रहती है; पुराने versions सात दिन बाद साफ हो सकते हैं। ऐप का डेटा साफ करने या uninstall करने पर निजी फ़ाइलें मिटती हैं। बाहर सहेजी कॉपी वहीं से हटाएँ।\n\nसहायता के लिए email करने पर आपका पता और संदेश जवाब देने के लिए उपयोग होते हैं। ज़रूरत के बिना संवेदनशील दस्तावेज़ न भेजें। सहायता-संदेश हटवाने के लिए हमसे संपर्क करें। आपकी जानकारी बेची नहीं जाती।",
+                                    "Laying out pages and checking the actual PDF. This continues in the background.",
+                                    "पेज तैयार हो रहे हैं और PDF जाँचा जा रहा है। यह पृष्ठभूमि में जारी रहेगा।",
                                 )
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                awaitingPdf = false
+                                model.cancelExport()
+                            }
+                        ) {
+                            Text(tr("Cancel export", "निर्यात रद्द करें"))
+                        }
+                    },
+                )
+            error?.let { message ->
+                AlertDialog(
+                    onDismissRequest = { model.error.value = null },
+                    title = { Text(tr("Something needs attention", "ध्यान दें")) },
+                    text = { Text(message) },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                model.error.value = null
+                                awaitingPdf = false
+                            }
+                        ) {
+                            Text(tr("OK", "ठीक है"))
+                        }
+                    },
+                )
+            }
+            info?.let { kind ->
+                AlertDialog(
+                    onDismissRequest = { info = null },
+                    title = {
+                        Text(
+                            if (kind == "privacy") tr("Privacy policy", "गोपनीयता नीति")
                             else
-                                tr(
-                                    "Offline document maker • No watermark\n\nBuilt with Android Jetpack, Tiptap / ProseMirror (MIT) and Noto fonts (SIL OFL). Third-party license texts are bundled in assets/licenses.\n\nPDF fidelity depends on the installed Android System WebView. Inspect the actual PDF preview before printing. Templates are editable drafts, not certifications.",
-                                    "ऑफ़लाइन दस्तावेज़ निर्माता • कोई वॉटरमार्क नहीं\n\nAndroid Jetpack, Tiptap / ProseMirror (MIT) और Noto (SIL OFL) का उपयोग करता है।\n\nप्रिंट करने से पहले असली PDF प्रीव्यू जाँचें। टेम्पलेट संपादन योग्य ड्राफ़्ट हैं, प्रमाणपत्र नहीं।",
-                                ),
-                    )
-                },
-                confirmButton = {
-                    TextButton(onClick = { info = null }) { Text(tr("Close", "बंद करें")) }
-                },
-            )
+                                "A4 Paper Typing ${com.a4sizepaper.typing.texttopdf.BuildConfig.VERSION_NAME}"
+                        )
+                    },
+                    text = {
+                        Text(
+                            modifier =
+                                Modifier.heightIn(max = 420.dp)
+                                    .verticalScroll(rememberScrollState()),
+                            text =
+                                if (kind == "privacy")
+                                    tr(
+                                        "A4 Paper Typing — AMAN KUMAR\nUpdated 10 October 2026\nContact: AMAKUNAR.IN@GMAIL.COM\n\nDocuments, selected photos and PDFs are processed on this device. No account, analytics, ads or document uploads. The app requests no Internet permission.\n\nPhoto Picker grants access only to images you choose. A private resized copy is stored; image metadata is removed. Notification permission is optional and shows PDF export progress.\n\nFiles leave the app when you choose Save as, Share or Print. The selected app, cloud provider or printer handles that copy under its own policy. We do not receive your documents.\n\nDelete documents within the app. Unused images can be removed after a 24-hour grace period at a later startup. Each document’s latest private PDF is retained; earlier PDFs can be removed after seven days. Clearing app storage or uninstalling removes private files. Copies saved elsewhere must be deleted there. Save important PDFs outside the app before uninstalling.\n\nIf you email support, your email address and message are handled to answer your request. Do not send sensitive documents unless necessary; contact us to request deletion of support correspondence. We do not sell your information.",
+                                        "A4 Paper Typing — AMAN KUMAR\nअपडेट: 10 अक्टूबर 2026\nसंपर्क: AMAKUNAR.IN@GMAIL.COM\n\nदस्तावेज़, चुनी हुई तस्वीरें और PDF इसी डिवाइस पर बनते हैं। लॉगिन, विज्ञापन, एनालिटिक्स या दस्तावेज़ अपलोड नहीं हैं। ऐप इंटरनेट अनुमति नहीं माँगता।\n\nPhoto Picker से केवल आपकी चुनी हुई तस्वीर की निजी कॉपी बनती है; तस्वीर का मेटाडेटा हटाया जाता है। PDF की प्रगति दिखाने की notification अनुमति वैकल्पिक है।\n\nSave as, Share या Print करने पर चुना हुआ ऐप, क्लाउड प्रदाता या प्रिंटर आपकी कॉपी संभालता है। हमें दस्तावेज़ प्राप्त नहीं होते।\n\nदस्तावेज़ ऐप में हटा सकते हैं। अनुपयोगी तस्वीरें 24 घंटे बाद अगले startup पर साफ हो सकती हैं। हर दस्तावेज़ की नई PDF रहती है; पुराने versions सात दिन बाद साफ हो सकते हैं। ऐप का डेटा साफ करने या uninstall करने पर निजी फ़ाइलें मिटती हैं। बाहर सहेजी कॉपी वहीं से हटाएँ।\n\nसहायता के लिए email करने पर आपका पता और संदेश जवाब देने के लिए उपयोग होते हैं। ज़रूरत के बिना संवेदनशील दस्तावेज़ न भेजें। सहायता-संदेश हटवाने के लिए हमसे संपर्क करें। आपकी जानकारी बेची नहीं जाती।",
+                                    )
+                                else
+                                    tr(
+                                        "Offline document maker • No watermark\n\nBuilt with Android Jetpack, Tiptap / ProseMirror (MIT) and Noto fonts (SIL OFL). Third-party license texts are bundled in assets/licenses.\n\nPDF fidelity depends on the installed Android System WebView. Inspect the actual PDF preview before printing. Templates are editable drafts, not certifications.",
+                                        "ऑफ़लाइन दस्तावेज़ निर्माता • कोई वॉटरमार्क नहीं\n\nAndroid Jetpack, Tiptap / ProseMirror (MIT) और Noto (SIL OFL) का उपयोग करता है।\n\nप्रिंट करने से पहले असली PDF प्रीव्यू जाँचें। टेम्पलेट संपादन योग्य ड्राफ़्ट हैं, प्रमाणपत्र नहीं।",
+                                    ),
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { info = null }) { Text(tr("Close", "बंद करें")) }
+                    },
+                )
+            }
         }
     }
 }
@@ -767,14 +789,23 @@ private fun HeroCard(onCreate: () -> Unit) {
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.weight(1f),
                 )
-                Text(
-                    "A4",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                PdfBadge()
             }
             Surface(
-                modifier = Modifier.fillMaxWidth(),
+                modifier =
+                    Modifier.fillMaxWidth().drawWithContent {
+                        drawContent()
+                        val fold = 16.dp.toPx()
+                        drawPath(
+                            androidx.compose.ui.graphics.Path().apply {
+                                moveTo(size.width - fold, 0f)
+                                lineTo(size.width, fold)
+                                lineTo(size.width - fold, fold)
+                                close()
+                            },
+                            Color(0xFFE8EBEF),
+                        )
+                    },
                 color = Color.White,
                 contentColor = Color(0xFF111827),
                 shape = RoundedCornerShape(8.dp),
@@ -1009,19 +1040,22 @@ internal fun TemplateCard(template: Template, modifier: Modifier = Modifier, onC
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp, pressedElevation = 0.dp),
     ) {
-        Column(Modifier.padding(16.dp)) {
-            Surface(
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                shape = RoundedCornerShape(10.dp),
+        Column(Modifier.padding(12.dp)) {
+            Box(
+                Modifier.fillMaxWidth()
+                    .height(72.dp)
+                    .background(
+                        MaterialTheme.colorScheme.surfaceVariant,
+                        MaterialTheme.shapes.small,
+                    ),
+                contentAlignment = Alignment.Center,
             ) {
-                Icon(
-                    Icons.AutoMirrored.Rounded.Article,
-                    null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(12.dp),
+                MiniPaper(
+                    remember(template.id) { template.filledParagraphs() },
+                    Modifier.width(46.dp).height(64.dp),
                 )
             }
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(10.dp))
             Text(template.name, fontWeight = FontWeight.SemiBold, minLines = 2)
             Spacer(Modifier.height(4.dp))
             Text(
@@ -1043,6 +1077,11 @@ private fun DocumentCard(
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val loadPreview = LocalDocumentPreview.current
+    val preview by
+        produceState<List<String>>(emptyList(), doc.id, doc.modifiedAt) {
+            value = loadPreview(doc.id)
+        }
     var menu by remember { mutableStateOf(false) }
     val locale =
         if (LocalHindi.current) java.util.Locale.forLanguageTag("hi-IN")
@@ -1058,12 +1097,7 @@ private fun DocumentCard(
             Modifier.fillMaxWidth().padding(14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(
-                Icons.Rounded.Description,
-                null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(36.dp),
-            )
+            MiniPaper(preview, Modifier.width(42.dp).height(59.dp))
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(

@@ -1,4 +1,4 @@
-﻿package com.a4sizepaper.typing.texttopdf.ui
+package com.a4sizepaper.typing.texttopdf.ui
 
 import android.content.Context
 import androidx.lifecycle.ViewModel
@@ -27,6 +27,34 @@ constructor(
     val prefs = preferences.flow.stateIn(viewModelScope, SharingStarted.Eagerly, null)
     val documents =
         repository.documents.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    suspend fun previewParagraphs(id: String): List<String> =
+        withContext(Dispatchers.IO) {
+            try {
+                val root = JSONObject(repository.load(id).content)
+                val lines = mutableListOf<String>()
+                fun visit(node: JSONObject, depth: Int) {
+                    if (depth > 80 || lines.size >= 8) return
+                    node
+                        .optString("text")
+                        .takeIf { it.isNotBlank() }
+                        ?.let { lines.add(it.take(100)) }
+                    if (node.optString("type") == "image") lines.add("▧")
+                    val children = node.optJSONArray("content") ?: return
+                    for (i in 0 until children.length()) {
+                        if (lines.size >= 8) break
+                        children.optJSONObject(i)?.let { visit(it, depth + 1) }
+                    }
+                }
+                visit(root, 0)
+                lines
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                emptyList()
+            }
+        }
+
     val current = MutableStateFlow<Document?>(null)
     val saving = MutableStateFlow("Ready")
     val error = MutableStateFlow<String?>(null)

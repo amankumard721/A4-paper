@@ -1,4 +1,4 @@
-﻿package com.a4sizepaper.typing.texttopdf.ui
+package com.a4sizepaper.typing.texttopdf.ui
 
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -204,7 +204,7 @@ fun EditorScreen(
                     IconButton(onClick = onSetup, enabled = ready) {
                         Icon(Icons.Rounded.Tune, tr("Page setup", "पेज सेटअप"))
                     }
-                    IconButton(
+                    FluentButton(
                         onClick = {
                             host?.snapshot {
                                 if (it != null) {
@@ -216,7 +216,7 @@ fun EditorScreen(
                         },
                         enabled = ready,
                     ) {
-                        Icon(Icons.Rounded.PictureAsPdf, tr("Preview PDF", "PDF प्रीव्यू"))
+                        Text(tr("Create PDF", "PDF बनाएँ"))
                     }
                 },
             )
@@ -488,71 +488,329 @@ private fun MediaDialog(
     command: (String, String?) -> Unit,
     pick: (Boolean) -> Unit,
 ) {
+    var selectedBorder by remember { mutableStateOf(1) }
+    var selectedCellAlign by remember { mutableStateOf("left") }
+    var selectedImgWidth by remember { mutableStateOf(50) }
+    var selectedImgAlign by remember { mutableStateOf("left") }
+
+    val primary = MaterialTheme.colorScheme.primary
+    val onPrimary = MaterialTheme.colorScheme.onPrimary
+    val error = MaterialTheme.colorScheme.error
+    val outline = MaterialTheme.colorScheme.outline
+    val sectionLabelStyle = MaterialTheme.typography.labelSmall.copy(color = outline)
+
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(tr("Tables & images", "टेबल और चित्र")) },
+        title = null,
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
-                Text(
-                    tr(
-                        "Place the cursor in a cell to edit its table. Drag a column edge to resize.",
-                        "टेबल बदलने के लिए सेल में कर्सर रखें। कॉलम की सीमा खींचकर आकार बदलें।",
-                    )
-                )
-                listOf(
-                        "table" to tr("Insert 3 × 3 table", "3 × 3 टेबल जोड़ें"),
-                        "addRowAfter" to tr("Add row", "पंक्ति जोड़ें"),
-                        "deleteRow" to tr("Delete row", "पंक्ति हटाएँ"),
-                        "addColumnAfter" to tr("Add column", "कॉलम जोड़ें"),
-                        "deleteColumn" to tr("Delete column", "कॉलम हटाएँ"),
-                        "toggleHeaderRow" to tr("Toggle header row", "शीर्षक पंक्ति"),
-                        "mergeCells" to
-                            tr("Merge selected cells in row", "एक पंक्ति के चुने सेल मिलाएँ"),
-                        "splitCell" to tr("Split merged cell", "मिला सेल बाँटें"),
-                        "deleteTable" to tr("Delete table", "टेबल हटाएँ"),
-                    )
-                    .forEach { (key, label) -> TextButton({ command(key, null) }) { Text(label) } }
-                Text(tr("Cell borders", "सेल की सीमा"))
-                Row {
-                    listOf(0, 1, 2).forEach { width ->
-                        TextButton({ command("cellBorder", width.toString()) }) {
-                            Text("$width px")
+
+                // ── Colored Header ──────────────────────────────────────
+                Surface(
+                    color = primary,
+                    shape = MaterialTheme.shapes.medium,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Row(
+                        Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Icon(
+                            Icons.Rounded.GridOn,
+                            contentDescription = null,
+                            tint = onPrimary,
+                            modifier = Modifier.size(28.dp),
+                        )
+                        Column {
+                            Text(
+                                tr("Tables & images", "टेबल और चित्र"),
+                                color = onPrimary,
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                            Text(
+                                tr("Cursor in cell to edit table", "सेल में कर्सर रखकर बदलें"),
+                                color = onPrimary.copy(alpha = 0.75f),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
                         }
                     }
                 }
-                Text(tr("Cell alignment", "सेल संरेखण"))
-                Row {
-                    listOf("left", "center", "right").forEach { v ->
-                        TextButton({ command("align", v) }) { Text(v) }
+
+                Spacer(Modifier.height(16.dp))
+
+                // ── Section: New Table ───────────────────────────────────
+                Text(tr("NEW TABLE", "नई टेबल"), style = sectionLabelStyle)
+                Spacer(Modifier.height(6.dp))
+                OutlinedButton(
+                    onClick = { command("table", null) },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Rounded.GridOn, null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(tr("Insert 3 × 3 table", "3 × 3 टेबल जोड़ें"))
+                }
+
+                Spacer(Modifier.height(16.dp))
+
+                // ── Section: Row & Column ────────────────────────────────
+                Text(tr("ROW / COLUMN", "पंक्ति / कॉलम"), style = sectionLabelStyle)
+                Spacer(Modifier.height(6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = { command("addRowAfter", null) },
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Icon(Icons.Rounded.AddBox, null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(tr("Add row", "पंक्ति जोड़ें"), style = MaterialTheme.typography.labelMedium)
+                    }
+                    OutlinedButton(
+                        onClick = { command("deleteRow", null) },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = error),
+                        border = BorderStroke(1.dp, error.copy(alpha = 0.5f)),
+                    ) {
+                        Icon(Icons.Rounded.IndeterminateCheckBox, null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(tr("Del row", "पंक्ति हटाएँ"), style = MaterialTheme.typography.labelMedium)
                     }
                 }
-                HorizontalDivider()
-                TextButton({ pick(false) }) { Text(tr("Insert photo", "फ़ोटो जोड़ें")) }
-                TextButton({ pick(true) }) {
-                    Text(tr("Insert signature image", "हस्ताक्षर का चित्र जोड़ें"))
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = { command("addColumnAfter", null) },
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Icon(Icons.Rounded.AddBox, null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(tr("Add col", "कॉलम जोड़ें"), style = MaterialTheme.typography.labelMedium)
+                    }
+                    OutlinedButton(
+                        onClick = { command("deleteColumn", null) },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = error),
+                        border = BorderStroke(1.dp, error.copy(alpha = 0.5f)),
+                    ) {
+                        Icon(Icons.Rounded.IndeterminateCheckBox, null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(tr("Del col", "कॉलम हटाएँ"), style = MaterialTheme.typography.labelMedium)
+                    }
                 }
+
+                Spacer(Modifier.height(16.dp))
+
+                // ── Section: Cell ────────────────────────────────────────
+                Text(tr("CELL", "सेल"), style = sectionLabelStyle)
+                Spacer(Modifier.height(6.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = { command("toggleHeaderRow", null) },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Icon(Icons.Rounded.TableRows, null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(tr("Toggle header row", "शीर्षक पंक्ति टॉगल"))
+                    }
+                    OutlinedButton(
+                        onClick = { command("mergeCells", null) },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Icon(Icons.Rounded.Merge, null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(tr("Merge selected cells", "चुने सेल मिलाएँ"))
+                    }
+                    OutlinedButton(
+                        onClick = { command("splitCell", null) },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Icon(Icons.Rounded.CallSplit, null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(tr("Split merged cell", "मिला सेल बाँटें"))
+                    }
+                }
+
+                Spacer(Modifier.height(16.dp))
+
+                // ── Section: Cell Border ─────────────────────────────────
+                Text(tr("CELL BORDER", "सेल की सीमा"), style = sectionLabelStyle)
+                Spacer(Modifier.height(6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(0, 1, 2).forEach { width ->
+                        val selected = selectedBorder == width
+                        if (selected) {
+                            Button(
+                                onClick = {
+                                    selectedBorder = width
+                                    command("cellBorder", width.toString())
+                                },
+                                modifier = Modifier.weight(1f),
+                            ) { Text("$width px") }
+                        } else {
+                            OutlinedButton(
+                                onClick = {
+                                    selectedBorder = width
+                                    command("cellBorder", width.toString())
+                                },
+                                modifier = Modifier.weight(1f),
+                            ) { Text("$width px") }
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(16.dp))
+
+                // ── Section: Cell Alignment ──────────────────────────────
+                Text(tr("CELL ALIGNMENT", "सेल संरेखण"), style = sectionLabelStyle)
+                Spacer(Modifier.height(6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(
+                        "left" to Icons.Rounded.FormatAlignLeft,
+                        "center" to Icons.Rounded.FormatAlignCenter,
+                        "right" to Icons.Rounded.FormatAlignRight,
+                    ).forEach { (v, icon) ->
+                        val selected = selectedCellAlign == v
+                        if (selected) {
+                            Button(
+                                onClick = { selectedCellAlign = v; command("align", v) },
+                                modifier = Modifier.weight(1f),
+                            ) { Icon(icon, null) }
+                        } else {
+                            OutlinedButton(
+                                onClick = { selectedCellAlign = v; command("align", v) },
+                                modifier = Modifier.weight(1f),
+                            ) { Icon(icon, null) }
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(16.dp))
+
+                // ── Danger: Delete Table ─────────────────────────────────
+                OutlinedButton(
+                    onClick = { command("deleteTable", null) },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = error),
+                    border = BorderStroke(1.dp, error.copy(alpha = 0.6f)),
+                ) {
+                    Icon(Icons.Rounded.Delete, null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(tr("Delete table", "टेबल हटाएँ"))
+                }
+
+                Spacer(Modifier.height(20.dp))
+                HorizontalDivider()
+                Spacer(Modifier.height(16.dp))
+
+                // ── Section: Image ───────────────────────────────────────
+                Text(tr("IMAGE", "चित्र"), style = sectionLabelStyle)
+                Spacer(Modifier.height(6.dp))
                 Text(
                     tr(
                         "Tap an image first, then choose its width or alignment.",
                         "पहले चित्र चुनें, फिर चौड़ाई या संरेखण बदलें।",
-                    )
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = outline,
                 )
-                Row {
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = { pick(false) },
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Icon(Icons.Rounded.Photo, null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(tr("Photo", "फ़ोटो"), style = MaterialTheme.typography.labelMedium)
+                    }
+                    OutlinedButton(
+                        onClick = { pick(true) },
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Icon(Icons.Rounded.Draw, null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(tr("Signature", "हस्ताक्षर"), style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+
+                Spacer(Modifier.height(10.dp))
+
+                // Image width picker
+                Text(tr("Image width", "चित्र चौड़ाई"), style = sectionLabelStyle)
+                Spacer(Modifier.height(6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     listOf(25, 50, 75, 100).forEach { v ->
-                        TextButton({ command("imageWidth", v.toString()) }) { Text("$v%") }
+                        val selected = selectedImgWidth == v
+                        if (selected) {
+                            Button(
+                                onClick = { selectedImgWidth = v; command("imageWidth", v.toString()) },
+                                modifier = Modifier.weight(1f),
+                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
+                            ) { Text("$v%", style = MaterialTheme.typography.labelMedium) }
+                        } else {
+                            OutlinedButton(
+                                onClick = { selectedImgWidth = v; command("imageWidth", v.toString()) },
+                                modifier = Modifier.weight(1f),
+                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
+                            ) { Text("$v%", style = MaterialTheme.typography.labelMedium) }
+                        }
                     }
                 }
-                Row {
-                    listOf("left", "center", "right").forEach { v ->
-                        TextButton({ command("imageAlign", v) }) { Text(v) }
+
+                Spacer(Modifier.height(10.dp))
+
+                // Image alignment picker
+                Text(tr("Image alignment", "चित्र संरेखण"), style = sectionLabelStyle)
+                Spacer(Modifier.height(6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(
+                        "left" to Icons.Rounded.FormatAlignLeft,
+                        "center" to Icons.Rounded.FormatAlignCenter,
+                        "right" to Icons.Rounded.FormatAlignRight,
+                    ).forEach { (v, icon) ->
+                        val selected = selectedImgAlign == v
+                        if (selected) {
+                            Button(
+                                onClick = { selectedImgAlign = v; command("imageAlign", v) },
+                                modifier = Modifier.weight(1f),
+                            ) { Icon(icon, null) }
+                        } else {
+                            OutlinedButton(
+                                onClick = { selectedImgAlign = v; command("imageAlign", v) },
+                                modifier = Modifier.weight(1f),
+                            ) { Icon(icon, null) }
+                        }
                     }
                 }
-                TextButton({ command("deleteImage", null) }) {
+
+                Spacer(Modifier.height(12.dp))
+
+                // Danger: Delete Image
+                OutlinedButton(
+                    onClick = { command("deleteImage", null) },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = error),
+                    border = BorderStroke(1.dp, error.copy(alpha = 0.6f)),
+                ) {
+                    Icon(Icons.Rounded.HideImage, null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
                     Text(tr("Delete selected image", "चुना चित्र हटाएँ"))
+                }
+
+                Spacer(Modifier.height(16.dp))
+
+                // ── Done Button (Prominent) ──────────────────────────────
+                Button(
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Rounded.Check, null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(tr("Done", "पूर्ण"), style = MaterialTheme.typography.labelLarge)
                 }
             }
         },
-        confirmButton = { TextButton(onDismiss) { Text(tr("Done", "पूर्ण")) } },
+        confirmButton = {},
     )
 }
 
