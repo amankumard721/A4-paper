@@ -1,15 +1,15 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.a4lekhak.documentmaker.DocumentTest" tests="9" skipped="0" failures="0" errors="0" timestamp="2026-10-09T12:01:26" hostname="AMAN" time="0.189">
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.a4sizepaper.typing.texttopdf.DocumentTest" tests="9" skipped="0" failures="0" errors="0" timestamp="2026-10-09T12:01:26" hostname="AMAN" time="0.189">
   <properties/>
-  <testcase name="invalidFontIsRejected" classname="com.a4lekhak.documentmaker.DocumentTest" time="0.052"/>
-  <testcase name="allTemplatesAreStructuredAndEditable" classname="com.a4lekhak.documentmaker.DocumentTest" time="0.12"/>
-  <testcase name="a4Geometry" classname="com.a4lekhak.documentmaker.DocumentTest" time="0.0"/>
-  <testcase name="invalidMarginsAreRejected" classname="com.a4lekhak.documentmaker.DocumentTest" time="0.0"/>
-  <testcase name="futureSchemaIsRejected" classname="com.a4lekhak.documentmaker.DocumentTest" time="0.007"/>
-  <testcase name="templateValuesCannotInjectHtml" classname="com.a4lekhak.documentmaker.DocumentTest" time="0.006"/>
-  <testcase name="nonFiniteMarginIsRejected" classname="com.a4lekhak.documentmaker.DocumentTest" time="0.001"/>
-  <testcase name="documentRoundTripPreservesMixedTextAndSettings" classname="com.a4lekhak.documentmaker.DocumentTest" time="0.001"/>
-  <testcase name="unsafeIdIsRejected" classname="com.a4lekhak.documentmaker.DocumentTest" time="0.0"/>
+  <testcase name="invalidFontIsRejected" classname="com.a4sizepaper.typing.texttopdf.DocumentTest" time="0.052"/>
+  <testcase name="allTemplatesAreStructuredAndEditable" classname="com.a4sizepaper.typing.texttopdf.DocumentTest" time="0.12"/>
+  <testcase name="a4Geometry" classname="com.a4sizepaper.typing.texttopdf.DocumentTest" time="0.0"/>
+  <testcase name="invalidMarginsAreRejected" classname="com.a4sizepaper.typing.texttopdf.DocumentTest" time="0.0"/>
+  <testcase name="futureSchemaIsRejected" classname="com.a4sizepaper.typing.texttopdf.DocumentTest" time="0.007"/>
+  <testcase name="templateValuesCannotInjectHtml" classname="com.a4sizepaper.typing.texttopdf.DocumentTest" time="0.006"/>
+  <testcase name="nonFiniteMarginIsRejected" classname="com.a4sizepaper.typing.texttopdf.DocumentTest" time="0.001"/>
+  <testcase name="documentRoundTripPreservesMixedTextAndSettings" classname="com.a4sizepaper.typing.texttopdf.DocumentTest" time="0.001"/>
+  <testcase name="unsafeIdIsRejected" classname="com.a4sizepaper.typing.texttopdf.DocumentTest" time="0.0"/>
   <system-out><![CDATA[]]></system-out>
   <system-err><![CDATA[]]></system-err>
 </testsuite>

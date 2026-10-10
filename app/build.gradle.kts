@@ -1,4 +1,4 @@
-plugins {
+﻿plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
@@ -7,10 +7,10 @@ plugins {
 }
 
 android {
-    namespace = "com.a4lekhak.documentmaker"
+    namespace = "com.a4sizepaper.typing.texttopdf"
     compileSdk = 36
     defaultConfig {
-        applicationId = "com.a4lekhak.documentmaker"
+        applicationId = "com.a4sizepaper.typing.texttopdf"
         minSdk = 26
         targetSdk = 36
         versionCode = 5
