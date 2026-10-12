@@ -70,6 +70,8 @@ fun LekhakApp(model: MainViewModel) {
             var pageSetup by remember { mutableStateOf(false) }
             var defaultsSetup by remember { mutableStateOf(false) }
             var info by remember { mutableStateOf<String?>(null) }
+            var editorReview by rememberSaveable(current?.id) { mutableStateOf(false) }
+            var pdfAction by rememberSaveable { mutableStateOf<String?>(null) }
             var awaitingPdf by rememberSaveable { mutableStateOf(false) }
             var pdfReturnScreen by rememberSaveable { mutableStateOf("main") }
 
@@ -96,8 +98,11 @@ fun LekhakApp(model: MainViewModel) {
                     p,
                     onBack = { screen = "main" },
                     onSetup = { pageSetup = true },
-                    onExport = {
+                    review = editorReview,
+                    onReview = { editorReview = it },
+                    onExport = { action ->
                         if (model.export()) {
+                            pdfAction = action
                             pdfReturnScreen = "editor"
                             awaitingPdf = true
                         }
@@ -106,6 +111,8 @@ fun LekhakApp(model: MainViewModel) {
             } else if (screen == "pdf" && pdf != null) {
                 PdfScreen(
                     pdf!!,
+                    initialAction = pdfAction,
+                    onActionConsumed = { pdfAction = null },
                     onBack = {
                         screen =
                             if (pdfReturnScreen == "editor" && current != null) "editor" else "main"

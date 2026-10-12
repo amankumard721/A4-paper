@@ -1,4 +1,4 @@
-﻿package com.a4sizepaper.typing.texttopdf.editor
+package com.a4sizepaper.typing.texttopdf.editor
 
 import android.annotation.SuppressLint
 import android.content.Context
@@ -21,19 +21,25 @@ class EditorHost(context: Context, private val onMessage: (JSONObject) -> Unit) 
     private var disposed = false
     private var restoreInputAfterWindowFocus = false
     private var screenPaused = false
+    private var startTypingRequested = false
 
     override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
-        if (!hasWindowFocus && !screenPaused) {
-            restoreInputAfterWindowFocus = hasFocus()
-        }
+        if (!hasWindowFocus && !screenPaused) restoreInputAfterWindowFocus = hasFocus()
         super.onWindowFocusChanged(hasWindowFocus)
-        if (!hasWindowFocus || !restoreInputAfterWindowFocus) return
-        restoreInputAfterWindowFocus = false
+        if (hasWindowFocus && (restoreInputAfterWindowFocus || startTypingRequested)) {
+            restoreInputAfterWindowFocus = false
+            startTyping()
+        }
+    }
+
+    /** Called only by the visible editor after its document is ready, never by PDF workers. */
+    fun startTyping() {
+        startTypingRequested = true
         post {
             if (disposed || screenPaused || !isAttachedToWindow || !hasWindowFocus()) return@post
+            startTypingRequested = false
             requestFocus()
-            // DOM focus is asynchronous. Show the IME only after the editor confirms it,
-            // instead of racing evaluateJavascript against showSoftInput.
+            // Wait for DOM focus before asking Android to show its keyboard.
             evaluateJavascript("window.Lekhak?.restoreInputFocus() === true") { focused ->
                 if (focused == "true")
                     postOnAnimation {
@@ -60,6 +66,7 @@ class EditorHost(context: Context, private val onMessage: (JSONObject) -> Unit) 
     override fun onResume() {
         screenPaused = false
         super.onResume()
+        if (startTypingRequested) startTyping()
     }
 
     override fun onPause() {
@@ -78,7 +85,12 @@ class EditorHost(context: Context, private val onMessage: (JSONObject) -> Unit) 
         settings.setSupportMultipleWindows(false)
         settings.javaScriptCanOpenWindowsAutomatically = false
         settings.textZoom = 100
-        settings.builtInZoomControls = false
+        // Native pinch changes the viewport only, not document typography or PDF layout.
+        settings.setSupportZoom(true)
+        settings.builtInZoomControls = true
+        settings.displayZoomControls = false
+        settings.useWideViewPort = true
+        settings.loadWithOverviewMode = false
         setBackgroundColor(android.graphics.Color.WHITE)
         isFocusableInTouchMode = true
         if (BuildConfig.DEBUG) setWebContentsDebuggingEnabled(true)
@@ -253,6 +265,17 @@ class EditorHost(context: Context, private val onMessage: (JSONObject) -> Unit) 
             "window.Lekhak.command(${JSONObject.quote(name)},${value?.let(JSONObject::quote) ?: "null"})",
             null,
         )
+
+    fun setReview(review: Boolean) {
+        if (review) {
+            startTypingRequested = false
+            restoreInputAfterWindowFocus = false
+            (context.getSystemService(Context.INPUT_METHOD_SERVICE)
+                    as? android.view.inputmethod.InputMethodManager)
+                ?.hideSoftInputFromWindow(windowToken, 0)
+        }
+        evaluateJavascript("typeof window.Lekhak?.review === 'function' ? window.Lekhak.review($review) : false") { if (!review) startTyping() }
+    }
 
     fun setMode(pages: Boolean) =
         evaluateJavascript("window.Lekhak.mode('${if(pages) "pages" else "write"}')", null)

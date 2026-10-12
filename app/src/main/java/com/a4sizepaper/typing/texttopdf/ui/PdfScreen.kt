@@ -1,4 +1,4 @@
-﻿package com.a4sizepaper.typing.texttopdf.ui
+package com.a4sizepaper.typing.texttopdf.ui
 
 import android.content.Intent
 import android.graphics.Bitmap
@@ -28,7 +28,12 @@ import kotlinx.coroutines.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PdfScreen(pdf: ExportedPdf, onBack: () -> Unit) {
+fun PdfScreen(
+    pdf: ExportedPdf,
+    initialAction: String? = null,
+    onActionConsumed: () -> Unit = {},
+    onBack: () -> Unit,
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
@@ -58,6 +63,32 @@ fun PdfScreen(pdf: ExportedPdf, onBack: () -> Unit) {
                     }
                 }
         }
+    val sharePdf: () -> Unit = {
+        try {
+            val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", pdf.file)
+            val intent =
+                Intent(Intent.ACTION_SEND).apply {
+                    type = "application/pdf"
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    clipData = android.content.ClipData.newRawUri("PDF", uri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+            context.startActivity(Intent.createChooser(intent, "Share PDF"))
+        } catch (_: Exception) {
+            error = "No application could share this PDF."
+        }
+    }
+    LaunchedEffect(pdf.file, initialAction) {
+        val action = initialAction ?: return@LaunchedEffect
+        onActionConsumed()
+        if (action == "share") sharePdf()
+        if (action == "save")
+            save.launch(
+                pdf.title.replace(Regex("[^\\p{L}\\p{N} ._-]"), "_").take(100).ifBlank {
+                    "Document"
+                } + ".pdf"
+            )
+    }
     LaunchedEffect(pdf.file, page) {
         bitmap = null
         try {
@@ -137,28 +168,7 @@ fun PdfScreen(pdf: ExportedPdf, onBack: () -> Unit) {
                         Spacer(Modifier.width(6.dp))
                         Text(tr("Save as", "सहेजें"))
                     }
-                    FluentOutlinedButton(
-                        onClick = {
-                            try {
-                                val uri =
-                                    FileProvider.getUriForFile(
-                                        context,
-                                        "${context.packageName}.files",
-                                        pdf.file,
-                                    )
-                                val intent =
-                                    Intent(Intent.ACTION_SEND).apply {
-                                        type = "application/pdf"
-                                        putExtra(Intent.EXTRA_STREAM, uri)
-                                        clipData = android.content.ClipData.newRawUri("PDF", uri)
-                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                    }
-                                context.startActivity(Intent.createChooser(intent, "Share PDF"))
-                            } catch (e: Exception) {
-                                error = "No application could share this PDF."
-                            }
-                        }
-                    ) {
+                    FluentOutlinedButton(onClick = sharePdf) {
                         Icon(Icons.Rounded.Share, tr("Share", "साझा करें"))
                     }
                     FluentOutlinedButton(

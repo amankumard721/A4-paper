@@ -1,4 +1,4 @@
-﻿plugins {
+plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
@@ -13,8 +13,8 @@ android {
         applicationId = "com.a4sizepaper.typing.texttopdf"
         minSdk = 26
         targetSdk = 36
-        versionCode = 5
-        versionName = "1.2.0"
+        versionCode = 6
+        versionName = "1.3.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     // Secrets are supplied by the local environment, never checked into source or source archives.

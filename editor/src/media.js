@@ -1,3 +1,4 @@
+import { TouchResize } from './resize.js';
 import { Extension, mergeAttributes } from '@tiptap/core';
 import Image from '@tiptap/extension-image';
 import Table from '@tiptap/extension-table';
@@ -30,4 +31,4 @@ const CellStyle=Extension.create({name:'cellStyle',addGlobalAttributes(){return 
   borderColor:{default:'#64748b',parseHTML:e=>e.style.borderColor,renderHTML:a=>({style:`border-color:${/^#[0-9a-f]{6}$/i.test(a.borderColor)?a.borderColor:'#64748b'}`})},
   borderWidth:{default:1,parseHTML:e=>parseInt(e.style.borderWidth)||0,renderHTML:a=>({style:`border-width:${[0,1,2].includes(a.borderWidth)?a.borderWidth:1}px`})},
 }}];}});
-export const mediaExtensions=[Table.configure({resizable:true,cellMinWidth:36,allowTableNodeSelection:true}),TableRow,TableCell,TableHeader,CellStyle,PrivateImage];
+export const mediaExtensions=[Table.configure({resizable:true,cellMinWidth:36,allowTableNodeSelection:true}),TableRow,TableCell,TableHeader,CellStyle,PrivateImage,TouchResize];

@@ -1,4 +1,5 @@
 import { Editor, Extension, Node, getSchema } from '@tiptap/core';
+import { selectedTable } from './resize.js';
 import { Selection } from '@tiptap/pm/state';
 import { closeHistory } from '@tiptap/pm/history';
 import { mediaExtensions, assetPattern, assetUrl } from './media.js';
@@ -20,7 +21,11 @@ let editor,settings,revision=0,mode='write',savedSelection=null,layoutTail=Promi
 let chunkAck=null;
 const send=(type,data={})=>{const message=JSON.stringify({type,...data});if(window.LekhakBridge)window.LekhakBridge.postMessage(message);else window.__messages=(window.__messages||[]).concat(JSON.parse(message));};
 const report=()=>send('change',{content:editor.getJSON(),revision:++revision});
-function state(){send('selection',{bold:editor.isActive('bold'),italic:editor.isActive('italic'),underline:editor.isActive('underline'),canUndo:editor.can().undo(),canRedo:editor.can().redo()});}
+function currentTextColor(){
+  const marks=editor.state.storedMarks ?? (editor.state.selection.empty ? editor.state.selection.$from.marks() : null);
+  return (marks ? marks.find(mark=>mark.type.name==='textStyle')?.attrs.color : editor.getAttributes('textStyle').color)||'#111827';
+}
+function state(){send('selection',{bold:editor.isActive('bold'),italic:editor.isActive('italic'),underline:editor.isActive('underline'),color:currentTextColor(),isTable:!!selectedTable(editor.state),canMerge:!!editor.state.selection.$anchorCell&&!!editor.state.selection.$headCell&&editor.state.selection.$anchorCell.start(-1)===editor.state.selection.$headCell.start(-1)&&editor.can().mergeCells(),canSplit:editor.can().splitCell(),isImage:editor.state.selection.node?.type.name==='image',imageWidth:editor.getAttributes('image').width||50,imageAlign:editor.getAttributes('image').align||'left',cellBorder:editor.getAttributes('tableCell').borderWidth??editor.getAttributes('tableHeader').borderWidth??1,canUndo:editor.can().undo(),canRedo:editor.can().redo()});}
 const extensions=[StarterKit.configure({codeBlock:false,code:false,horizontalRule:false,blockquote:false}),Underline,TextStyle,Color,FontFamily,TextAlign.configure({types:['heading','paragraph']}),Typography,PageBreak,...mediaExtensions];
 function sanitizePaste(html){const d=new DOMParser().parseFromString(html,'text/html');d.querySelectorAll('script,iframe,img,svg,object,embed,style,link,meta').forEach(e=>e.remove());d.querySelectorAll('*').forEach(e=>{for(const a of [...e.attributes])if(a.name.startsWith('on')||['href','src','srcset'].includes(a.name))e.removeAttribute(a.name);});return d.body.innerHTML;}
 function preview(){const html=editor.getHTML(),page={...settings};const key=html+JSON.stringify(page);const next=layoutTail.then(async()=>{if(key!==layoutKey){layoutResult=await paginate(html,page);layoutKey=key;}send('layout',layoutResult);return layoutResult;});layoutTail=next.catch(()=>{});return next;}
@@ -30,12 +35,20 @@ window.Lekhak={
     document.documentElement.lang=payload.language||'en';document.getElementById('editor-help').textContent=payload.language==='hi'?'दस्तावेज़ संपादक। लिखने के लिए सक्रिय करें। पेज मोड केवल पूर्वावलोकन है।':'Document editor. Activate to edit text. Page mode is a read-only preview.';document.getElementById('pages').setAttribute('aria-label',payload.language==='hi'?'A4 पेज पूर्वावलोकन':'A4 page preview');document.body.classList.toggle('dark',!!payload.dark);applySettings(settings);
     editor?.destroy();editor=new Editor({element:document.getElementById('editor'),extensions,content:payload.content,autofocus:false,
       editorProps:{attributes:{role:'textbox','aria-multiline':'true','aria-describedby':'editor-help','tabindex':'0','lang':payload.language||'en','aria-label':payload.language==='hi'?'दस्तावेज़ संपादक':'Document editor',spellcheck:'true'},transformPastedHTML:sanitizePaste},
-      onUpdate:report,onSelectionUpdate:()=>{savedSelection=editor.state.selection.toJSON();state();}});
-    savedSelection=null;revision=0;layoutKey='';mode='write';document.body.classList.remove('pages');await document.fonts.ready;send('ready');
+      onUpdate:()=>{report();state();},onSelectionUpdate:()=>{savedSelection=editor.state.selection.toJSON();state();}});
+    savedSelection=null;revision=0;layoutKey='';mode='write';document.body.classList.remove('pages');await document.fonts.ready;send('ready');state();
     if(payload.renderOnly){
       const result=await this.exportPdf();send('pdfBegin',{pages:result.pages,length:result.bytes.length});
       let index=0;for(let offset=0;offset<result.bytes.length;offset+=98304){const chunk=result.bytes.subarray(offset,offset+98304);let binary='';for(let i=0;i<chunk.length;i+=8192)binary+=String.fromCharCode(...chunk.subarray(i,i+8192));await new Promise((resolve,reject)=>{const timer=setTimeout(()=>{chunkAck=null;reject(Error('PDF storage did not respond.'))},30000);chunkAck={index,resolve:()=>{clearTimeout(timer);resolve();}};send('pdfChunk',{index,data:btoa(binary)});});index++;}send('pdfEnd',{chunks:index});
     }
+  },
+  review(enabled){
+    if(!editor || editor.isDestroyed)return false;
+    mode=enabled?'review':'write';
+    if(enabled)editor.commands.blur();
+    editor.setEditable(!enabled,false);
+    document.body.classList.remove('pages');
+    return true;
   },
   restoreInputFocus(){
     if(!editor || mode!=='write' || editor.isDestroyed)return false;
@@ -44,7 +57,7 @@ window.Lekhak={
     return document.activeElement===editor.view.dom;
   },
   async command(name,value){
-    if(!editor)return;
+    if(!editor || mode==='review')return;
     if(savedSelection)editor.view.dispatch(editor.state.tr.setSelection(Selection.fromJSON(editor.state.doc,savedSelection)));
     if(['image','deleteImage','table','deleteTable'].includes(name))editor.view.dispatch(closeHistory(editor.state.tr));
     let chain=editor.chain().focus();
@@ -63,7 +76,7 @@ window.Lekhak={
       case 'paste':if(typeof value==='string')chain.insertContent(value.split('\n').map(t=>({type:'paragraph',content:t?[{type:'text',text:t}]:[]}))).run();break;
       case 'date':chain.insertContent(new Date().toLocaleDateString(document.documentElement.lang,{day:'numeric',month:'long',year:'numeric'})).run();break;
       case 'pageBreak':chain.insertContent([{type:'pageBreak'},{type:'paragraph'}]).run();break;
-      case 'clear':chain.unsetAllMarks().clearNodes().resetAttributes('paragraph',['textAlign','lineHeight','paragraphSpacing']).run();break;
+      case 'clear':chain.clearNodes().resetAttributes('paragraph',['textAlign','lineHeight','paragraphSpacing']).unsetAllMarks().run();if(editor.state.selection.empty)editor.view.dispatch(editor.state.tr.setStoredMarks([]));break;
       case 'snapshot':report();break;
       case 'table':{const v=JSON.parse(value||'{}');chain.insertTable({rows:Math.max(1,Math.min(20,+v.rows||3)),cols:Math.max(1,Math.min(8,+v.cols||3)),withHeaderRow:true}).run();break;}
       case 'addRowAfter':case 'deleteRow':case 'addColumnAfter':case 'deleteColumn':case 'deleteTable':case 'toggleHeaderRow':case 'splitCell':chain[name]().run();break;
