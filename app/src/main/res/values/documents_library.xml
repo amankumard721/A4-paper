@@ -1,0 +1,30 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="library_documents">Documents</string>
+    <string name="library_saved_on_this_device">Saved on this device</string>
+    <string name="library_import">Import</string>
+    <string name="library_find_your_documents">Find your documents…</string>
+    <string name="library_clear_search">Clear search</string>
+    <string name="library_last_edited">Last edited</string>
+    <string name="library_newest">Newest</string>
+    <string name="library_title">Title</string>
+    <string name="library_your_library">Your library</string>
+    <string name="library_grid">Grid</string>
+    <string name="library_list">List</string>
+    <string name="library_your_library_is_empty">Your library is empty</string>
+    <string name="library_no_documents_found">No documents found</string>
+    <string name="library_new_document">New document</string>
+    <string name="library_try_another_name_or_create_a_document">Try another name or create a document</string>
+    <string name="library_saved_pdfs">Saved PDFs</string>
+    <string name="library_rename">Rename</string>
+    <string name="library_share">Share</string>
+    <string name="library_save_as_pdf">Save as PDF</string>
+    <string name="library_duplicate">Duplicate</string>
+    <string name="library_delete">Delete</string>
+    <string name="library_untitled_document">Untitled document</string>
+    <string name="library_more_options">More options</string>
+    <plurals name="library_files">
+        <item quantity="one">%d file</item>
+        <item quantity="other">%d files</item>
+    </plurals>
+</resources>

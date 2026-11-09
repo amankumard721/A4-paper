@@ -60,6 +60,368 @@ constructor(
     val error = MutableStateFlow<String?>(null)
     val recovered = MutableStateFlow(false)
     val exporting = MutableStateFlow(false)
+    val importing = MutableStateFlow(false)
+    val importNotice = MutableStateFlow<List<String>?>(null)
+    val importLabel = MutableStateFlow("Document")
+    val pendingImport = MutableStateFlow<PendingImport?>(null)
+    val importedPdfs = MutableStateFlow<List<ImportedPdfEntry>>(emptyList())
+    val viewingImportedPdf = MutableStateFlow<ImportedPdfEntry?>(null)
+    private val importedPdfStore = ImportedPdfStore(context)
+    private var importJob: Job? = null
+
+    fun importImageDocument(uri: android.net.Uri, onReady: () -> Unit) {
+        if (importing.value || exporting.value) return
+        importing.value = true
+        importLabel.value = "Image"
+        importJob =
+            viewModelScope.launch {
+                try {
+                    flush()
+                    val id = AssetStore(context).importImage(uri)
+                    val page = prefs.value?.defaults ?: PageSettings()
+                    val content =
+                        withContext(Dispatchers.Default) {
+                            val bitmap =
+                                android.graphics.BitmapFactory.Options().apply {
+                                    inJustDecodeBounds = true
+                                }
+                            android.graphics.BitmapFactory.decodeFile(
+                                AssetStore(context).file(id)!!.path,
+                                bitmap,
+                            )
+                            val availableWidth = page.widthMm - page.marginLeft - page.marginRight
+                            val availableHeight =
+                                page.heightMm - page.marginTop - page.marginBottom - 14.0
+                            val width =
+                                minOf(
+                                        100.0,
+                                        availableHeight * bitmap.outWidth /
+                                            bitmap.outHeight /
+                                            availableWidth * 100,
+                                    )
+                                    .also { require(it >= 10.0) { "This image is too tall for one A4 page. Crop it before importing." } }
+                            JSONObject()
+                                .put("type", "doc")
+                                .put(
+                                    "content",
+                                    org.json
+                                        .JSONArray()
+                                        .put(
+                                            JSONObject()
+                                                .put("type", "image")
+                                                .put(
+                                                    "attrs",
+                                                    JSONObject()
+                                                        .put("assetId", id)
+                                                        .put("width", width)
+                                                        .put("align", "center")
+                                                        .put("alt", "Imported image"),
+                                                )
+                                        )
+                                        .put(JSONObject().put("type", "paragraph")),
+                                )
+                                .toString()
+                        }
+                    val document =
+                        Document(
+                            title =
+                                if (prefs.value?.language == "hi") "चित्र दस्तावेज़"
+                                else "Image document",
+                            content = content,
+                            page = page,
+                            assets = listOf(id),
+                        )
+                    repository.save(document)
+                    current.value = document
+                    saving.value = "Saved on device"
+                    onReady()
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (e: Exception) {
+                    error.value = e.message ?: "Could not import the image."
+                } finally {
+                    importing.value = false
+                    importLabel.value = "Document"
+                }
+            }
+    }
+
+    fun offerImport(uri: android.net.Uri, format: ImportFormat? = null, external: Boolean = false) {
+        if (importing.value || exporting.value) {
+            error.value = "Wait for the current import or export to finish."
+            return
+        }
+        viewModelScope.launch {
+            try {
+                val kind =
+                    withContext(Dispatchers.IO) { ImportFormat.validate(context, uri, format) }
+                pendingImport.value = PendingImport(uri, kind, external)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                error.value = e.message ?: "Cannot open this file."
+            }
+        }
+    }
+
+    private var spreadsheetExportJob: Job? = null
+    internal val spreadsheet = MutableStateFlow<SheetBook?>(null)
+
+    internal fun openSpreadsheet(request: PendingImport, onReady: () -> Unit) {
+        if (importing.value || exporting.value) return
+        importing.value = true
+        importLabel.value = request.format.label
+        pendingImport.value = null
+        importJob = viewModelScope.launch {
+            try {
+                spreadsheet.value = ExcelImporter(context).openGrid(request.uri)
+                onReady()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                error.value = failure.message ?: "Could not open the spreadsheet."
+            } finally {
+                importing.value = false
+            }
+        }
+    }
+
+    internal fun exportSpreadsheet(book: SheetBook): Boolean {
+        if (exporting.value || importing.value) return false
+        viewingImportedPdf.value = null
+        pdf.value = null
+        exporting.value = true
+        spreadsheetExportJob = viewModelScope.launch {
+            try {
+                val result = withContext(Dispatchers.Default) { ExcelReader().exportGrid(book) }
+                ExportWorker.enqueue(context, Document(title = book.title, content = result.content.toString(), page = result.page))
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                exporting.value = false
+                error.value = failure.message ?: "Could not export the spreadsheet."
+            }
+        }
+        return true
+    }
+
+    fun importFile(request: PendingImport, onReady: (Boolean) -> Unit) {
+        if (importing.value) return
+        importing.value = true
+        importLabel.value = request.format.label
+        pendingImport.value = null
+        importJob =
+            viewModelScope.launch {
+                try {
+                    flush()
+                    if (request.format == ImportFormat.PDF) {
+                        val entry = PdfImporter(context, importedPdfStore).import(request.uri)
+                        refreshImportedPdfs()
+                        showImportedPdf(entry)
+                        onReady(true)
+                    } else {
+                        val (document, warnings) =
+                            when (request.format) {
+                                ImportFormat.EXCEL ->
+                                    ExcelImporter(context).import(request.uri).let {
+                                        it.document to it.warnings
+                                    }
+                                else ->
+                                    WordImporter(context).import(request.uri).let {
+                                        it.document to it.warnings
+                                    }
+                            }
+                        repository.save(document)
+                        current.value = document
+                        saving.value = "Saved on device"
+                        importNotice.value = warnings
+                        onReady(false)
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    error.value =
+                        "${request.format.label} import failed: " +
+                            (e.message ?: "Choose an unprotected supported file.")
+                } finally {
+                    importing.value = false
+                }
+            }
+    }
+
+    fun importScan(uri: android.net.Uri, pages: Int, onReady: () -> Unit) {
+        if (importing.value || exporting.value) {
+            error.value = "Wait for the current import or export before saving a scan."
+            return
+        }
+        importing.value = true
+        importLabel.value = "scanned PDF"
+        importJob =
+            viewModelScope.launch {
+                try {
+                    val title =
+                        "Scan " +
+                            java.time.LocalDateTime.now()
+                                .format(
+                                    java.time.format.DateTimeFormatter.ofPattern(
+                                        "yyyy-MM-dd HH.mm.ss"
+                                    )
+                                )
+                    val entry = PdfImporter(context, importedPdfStore).importScan(uri, pages, title)
+                    refreshImportedPdfs()
+                    showImportedPdf(entry)
+                    onReady()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    error.value =
+                        e.message
+                            ?: "Could not save the scanned PDF. Scan a smaller batch and try again."
+                } finally {
+                    importing.value = false
+                }
+            }
+    }
+
+    fun cancelImport() {
+        importJob?.cancel()
+    }
+
+    private suspend fun refreshImportedPdfs() {
+        importedPdfs.value = importedPdfStore.entries()
+    }
+
+    private fun showImportedPdf(entry: ImportedPdfEntry) {
+        viewingImportedPdf.value = entry
+        pdf.value = ExportedPdf(entry.file, entry.pages, false, entry.title)
+    }
+
+    fun openImportedPdf(entry: ImportedPdfEntry, onReady: () -> Unit) =
+        viewModelScope.launch {
+            try {
+                showImportedPdf(importedPdfStore.get(entry.id))
+                onReady()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                error.value = e.message ?: "Cannot open PDF."
+            }
+        }
+
+    fun renameImportedPdf(entry: ImportedPdfEntry, title: String) = pdfMutation {
+        importedPdfStore.rename(entry.id, title)
+    }
+
+    fun duplicateImportedPdf(entry: ImportedPdfEntry) = pdfMutation {
+        importedPdfStore.duplicate(entry.id)
+    }
+
+    fun deleteImportedPdf(entry: ImportedPdfEntry) = pdfMutation {
+        importedPdfStore.delete(entry.id)
+        if (viewingImportedPdf.value?.id == entry.id) {
+            viewingImportedPdf.value = null
+            pdf.value = null
+        }
+    }
+
+    private fun pdfMutation(block: suspend () -> Unit) =
+        viewModelScope.launch {
+            try {
+                block()
+                refreshImportedPdfs()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                error.value = e.message ?: "Could not update the PDF."
+            }
+        }
+
+    fun editPdfText(entry: ImportedPdfEntry, onReady: () -> Unit) {
+        if (importing.value) return
+        importing.value = true
+        importLabel.value = "PDF text"
+        importJob =
+            viewModelScope.launch {
+                try {
+                    flush()
+                    val imported = PdfImporter(context, importedPdfStore).extractText(entry)
+                    repository.save(imported.document)
+                    current.value = imported.document
+                    saving.value = "Saved on device"
+                    importNotice.value = imported.warnings
+                    onReady()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    error.value = e.message ?: "Could not extract PDF text."
+                } finally {
+                    importing.value = false
+                }
+            }
+    }
+
+    fun compressPdf(uri: android.net.Uri, onReady: () -> Unit) {
+        if (importing.value || exporting.value) return
+        importing.value = true
+        importLabel.value = "PDF compression"
+        importJob = viewModelScope.launch {
+            try {
+                val compressed = PdfImporter(context, importedPdfStore).compress(uri)
+                refreshImportedPdfs()
+                showImportedPdf(compressed)
+                onReady()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (failure: Exception) {
+                error.value = failure.message ?: "Could not compress this PDF."
+            } finally {
+                importing.value = false
+            }
+        }
+    }
+
+    fun mergePdfs(uris: List<android.net.Uri>, onReady: () -> Unit) {
+        if (importing.value || exporting.value) return
+        importing.value = true
+        importLabel.value = "PDF merge"
+        importJob = viewModelScope.launch {
+            try {
+                val merged = PdfImporter(context, importedPdfStore).merge(uris)
+                refreshImportedPdfs()
+                showImportedPdf(merged)
+                onReady()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (failure: Exception) {
+                error.value = failure.message ?: "Could not merge these PDFs."
+            } finally {
+                importing.value = false
+            }
+        }
+    }
+
+    fun copyPdfPages(entry: ImportedPdfEntry, ranges: String, rotation: Int, onReady: () -> Unit) {
+        if (importing.value) return
+        importing.value = true
+        importLabel.value = "PDF pages"
+        importJob =
+            viewModelScope.launch {
+                try {
+                    val copy =
+                        PdfImporter(context, importedPdfStore).createCopy(entry, ranges, rotation)
+                    refreshImportedPdfs()
+                    showImportedPdf(copy)
+                    onReady()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    error.value = e.message ?: "Could not create PDF copy."
+                } finally {
+                    importing.value = false
+                }
+            }
+    }
+
     val pdf = MutableStateFlow<ExportedPdf?>(null)
     private var completedExport: java.util.UUID? = null
     private val writes =
@@ -78,6 +440,15 @@ constructor(
         )
 
     init {
+        viewModelScope.launch {
+            try {
+                refreshImportedPdfs()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                error.value = e.message ?: "Could not load imported PDFs."
+            }
+        }
         enqueue {
             try {
                 val failed = repository.recover()
@@ -105,17 +476,18 @@ constructor(
                 if (job.state == WorkInfo.State.SUCCEEDED) {
                     val data = job.outputData
                     val path = data.getString("path")
-                    if (path != null && File(path).exists()) {
-                        pdf.value =
-                            ExportedPdf(
-                                File(path),
-                                data.getInt("pages", 1),
-                                data.getBoolean("landscape", false),
-                                data.getString("title") ?: "Document",
-                            )
+                    if (path != null && File(path).exists() && completedExport != job.id) {
+                        completedExport = job.id
+                        if (viewingImportedPdf.value == null)
+                            pdf.value =
+                                ExportedPdf(
+                                    File(path),
+                                    data.getInt("pages", 1),
+                                    data.getBoolean("landscape", false),
+                                    data.getString("title") ?: "Document",
+                                )
                         val id = data.getString("documentId")
-                        if (id != null && completedExport != job.id) {
-                            completedExport = job.id
+                        if (id != null) {
                             markExport(id, data.getInt("pages", 1))
                         }
                     }
@@ -239,6 +611,7 @@ constructor(
     }
 
     fun export(): Boolean {
+        viewingImportedPdf.value = null
         val snapshot = current.value ?: return false
         if (snapshot.isBlankContent()) {
             error.value =
@@ -262,6 +635,8 @@ constructor(
     }
 
     fun cancelExport() {
+        spreadsheetExportJob?.cancel()
+        spreadsheetExportJob = null
         WorkManager.getInstance(context).cancelUniqueWork("pdf-export")
         exporting.value = false
     }
@@ -304,6 +679,16 @@ constructor(
     fun delete(entry: DocumentEntry) {
         if (current.value?.id == entry.id) current.value = null
         enqueue { repository.delete(entry.id) }
+    }
+
+    fun libraryPreferences(sort: String? = null, grid: Boolean? = null) {
+        viewModelScope.launch {
+            try {
+                preferences.updateLibrary(sort, grid)
+            } catch (e: java.io.IOException) {
+                error.value = e.message
+            }
+        }
     }
 
     fun preferences(value: AppPreferences) {

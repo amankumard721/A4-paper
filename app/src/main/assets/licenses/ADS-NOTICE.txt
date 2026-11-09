@@ -1,0 +1,30 @@
+Advertising and privacy SDK notices
+
+Google Mobile Ads SDK (legacy): com.google.android.gms:play-services-ads:24.9.0
+Google User Messaging Platform: com.google.android.ump:user-messaging-platform:4.0.0
+Google Meta Audience Network adapter: com.google.ads.mediation:facebook:6.21.0.1
+Meta Audience Network SDK is a transitive dependency of that adapter.
+
+These SDKs remain subject to their respective providers' terms. This notice
+is not a replacement license or a claim that proprietary advertising SDKs
+are covered by the app's other open-source licenses.
+
+Google Mobile Ads terms:
+https://developers.google.com/admob/android/terms
+Google privacy policy:
+https://policies.google.com/privacy
+Google SDK data disclosure:
+https://developers.google.com/admob/android/privacy/play-data-disclosure
+UMP documentation:
+https://developers.google.com/admob/android/privacy
+Google Meta adapter source and notices:
+https://github.com/googleads/googleads-mobile-android-mediation/tree/main/ThirdPartyAdapters/facebook
+Meta Audience Network publisher terms:
+https://www.facebook.com/ads/manage/audience_network/publisher_tos
+Meta privacy policy:
+https://www.facebook.com/privacy/policy/
+
+Ad services can process identifiers, network/IP information, ad interactions
+and diagnostics. This app does not supply document content in ad requests.
+Account settings and privacy choices govern available ad behavior; demo ads
+do not establish production account readiness.

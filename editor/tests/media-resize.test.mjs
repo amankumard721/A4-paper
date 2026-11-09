@@ -7,14 +7,15 @@ const para=text=>({type:'paragraph',content:text?[{type:'text',text}]:[]});
 const boot=content=>p.evaluate(({content,settings})=>window.Lekhak.boot({schemaVersion:1,page:settings,content:{type:'doc',content}}),{content,settings});
 const json=()=>p.evaluate(()=>window.Lekhak.getJSON());
 const settle=()=>p.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
-async function drag(selector,dx,dy=0){const box=await p.locator(selector).boundingBox();assert.ok(box,selector);const x=box.x+box.width/2,y=box.y+box.height/2;await p.mouse.move(x,y);await p.mouse.down();await p.mouse.move(x+dx,y+dy,{steps:8});await p.mouse.up();await settle();}
+async function drag(selector,dx,dy=0){await settle();const box=await p.locator(selector).boundingBox();assert.ok(box,selector);const x=box.x+box.width/2,y=box.y+box.height/2;await p.mouse.move(x,y);await p.mouse.down();await p.mouse.move(x+dx,y+dy,{steps:8});await p.mouse.up();await settle();}
 try{
  await p.setViewportSize({width:360,height:740});
  const bytes=await p.evaluate(()=>{const c=document.createElement('canvas');c.width=320;c.height=160;const x=c.getContext('2d');x.fillStyle='#dbeafe';x.fillRect(0,0,320,160);x.fillStyle='#0f6cbd';x.font='32px sans-serif';x.fillText('Image preview',32,90);return c.toDataURL().split(',')[1];});
  await p.route('**/document-assets/'+id,r=>r.fulfill({contentType:'image/png',body:Buffer.from(bytes,'base64')}));
  await boot([para('Resize image'),{type:'image',attrs:{assetId:id,src:'/document-assets/'+id,width:50,align:'left'}},para('After image')]);
  await p.locator('#editor img').click();await settle();
- assert.equal(await p.locator('.image-grip').count(),4);
+ assert.equal(await p.locator('.image-grip').count(),8);
+ for(const edge of ['n','ne','e','se','s','sw','w','nw']) assert.equal(await p.locator('.image-grip.'+edge).count(),1);
  const original=await json();
  // Touch resize is live without writing a document revision until release; cancellation rolls back.
  const touch=await p.context().newCDPSession(p);let grip=await p.locator('.image-grip.se').boundingBox();
@@ -31,7 +32,12 @@ try{
  await p.evaluate(()=>window.Lekhak.command('undo'));assert.deepEqual(await json(),original);
  await p.evaluate(()=>window.Lekhak.command('redo'));assert.deepEqual(await json(),resized);
  await settle();await drag('.image-grip.se',1000,500);assert.equal((await json()).content[1].attrs.width,100);
- await drag('.image-grip.se',-1000,-500);assert.equal((await json()).content[1].attrs.width,10);
+ await drag('.image-grip.se',-1000,-500);
+ const minimumWidth=(await json()).content[1].attrs.width;
+ // A locked 2:1 image must retain its 16px minimum height (32px width), even on a 312px page.
+ assert.ok(minimumWidth>=10&&minimumWidth<11);
+ const minimumImage=await p.locator('#editor img').boundingBox();
+ assert.ok(minimumImage.height>=15.5&&minimumImage.height<17);
  await p.evaluate(()=>window.Lekhak.command('imageWidth','65'));await settle();
  await mkdir('../validation/media-tools',{recursive:true});await p.screenshot({path:'../validation/media-tools/image-handles.png'});
  assert.ok(!(await p.evaluate(()=>window.Lekhak.getHTML())).includes('resize-grip'));
@@ -58,6 +64,21 @@ try{
  await session.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await settle();
  assert.notDeepEqual(await json(),after,'touch drag changes widths');
  await p.screenshot({path:'../validation/media-tools/table-grips.png'});
+ assert.equal(await p.locator('.row-grip').count(),3);
+ assert.equal(await p.locator('.table-grip').count(),1);
+ const row0Before=await p.locator('#editor tr').first().boundingBox();
+ await drag('.row-grip >> nth=0',0,35);
+ const row0After=await p.locator('#editor tr').first().boundingBox();
+ assert.ok(row0After.height>row0Before.height);
+ const rowJson=await json();
+ assert.ok(rowJson.content[1].content[0].attrs.height>=row0Before.height);
+ await p.evaluate(()=>window.Lekhak.command('undo'));
+ assert.equal((await json()).content[1].content[0].attrs.height,null);
+ await p.evaluate(()=>window.Lekhak.command('redo'));
+ assert.ok((await json()).content[1].content[0].attrs.height>=row0Before.height);
+ await drag('.table-grip.se',30,30);
+ const cornerJson=await json();
+ assert.ok(cornerJson.content[1].content[2].attrs.height>=28);
  // Horizontal merged header updates every covered column and preserves spans.
  await boot([{type:'table',content:[{type:'tableRow',content:[{type:'tableHeader',attrs:{colspan:2,colwidth:[100,100]},content:[para('Merged')]},{type:'tableHeader',attrs:{colwidth:[100]},content:[para('Third')]}]},
  {type:'tableRow',content:[0,1,2].map(i=>({type:'tableCell',attrs:{colwidth:[100]},content:[para('Cell '+i)]}))}]}]);

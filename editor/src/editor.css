@@ -29,6 +29,18 @@ table{border-collapse:collapse;table-layout:fixed;width:100%;max-width:100%;marg
 .image-grip:after{content:'';display:block;width:12px;height:12px;margin:auto;border:2px solid #0f6cbd;border-radius:3px;background:white;box-shadow:0 1px 3px #0003}
 .image-grip.ne,.image-grip.sw{cursor:nesw-resize}
 .column-grip{width:32px;height:32px;border-radius:8px;border:1px solid #0f6cbd;background:#ebf3fc;color:#0c3b5e;font:20px sans-serif;cursor:col-resize}
+.row-grip{width:32px;height:32px;border-radius:8px;border:1px solid #0f6cbd;background:#ebf3fc;color:#0c3b5e;font:20px sans-serif;cursor:row-resize}
+.table-grip{width:32px;height:32px;border-radius:8px;border:1px solid #0f6cbd;background:#ebf3fc;color:#0c3b5e;cursor:nwse-resize}
+.table-grip:after{content:'';display:block;width:12px;height:12px;margin:auto;border:2px solid #0f6cbd;border-radius:3px;background:white;box-shadow:0 1px 3px #0003}
 .resize-grip:focus-visible{outline:2px solid #0f6cbd;outline-offset:2px}
 .column-guide{position:absolute;width:2px;background:#0f6cbd;pointer-events:none}
+.row-guide{position:absolute;height:2px;background:#0f6cbd;pointer-events:none}
 @media print{.resize-tools{display:none!important}}
+
+/* Image frame reserves the rotated bounding box in text flow and in page layout. */
+[data-image-frame]{display:block;position:relative;max-width:100%;margin:0 auto var(--space) 0;overflow:visible;break-inside:avoid}
+[data-image-frame][data-align=center]{margin-left:auto;margin-right:auto}
+[data-image-frame][data-align=right]{margin-left:auto;margin-right:0}
+[data-image-frame]>img[data-asset-id]{position:absolute;display:block;left:50%;top:50%;max-width:none;max-height:none;margin:0;object-fit:fill;transform-origin:center}
+.rotation-grip{border:1px solid #0f6cbd;border-radius:50%;background:white;color:#0f6cbd;font:22px sans-serif;cursor:grab}
+.image-grip.n,.image-grip.s{cursor:ns-resize}.image-grip.e,.image-grip.w{cursor:ew-resize}

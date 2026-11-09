@@ -1,0 +1,29 @@
+Offline import dependencies
+
+JExcelAPI (JXL) 2.6.12, Copyright Andy Khan and contributors.
+Licensed under GNU Lesser General Public License 2.1; full text in JXL-LGPL-2.1.txt.
+Unmodified library and source: https://sourceforge.net/projects/jexcelapi/files/jexcelapi/2.6.12/
+Maven coordinates: net.sourceforge.jexcelapi:jxl:2.6.12.
+The optional Log4J backend is excluded.
+
+PdfBox-Android 2.0.27.0, Apache PDFBox contributors and Tom Roush.
+Apache License 2.0; see PDFBOX-APACHE-2.0.txt and PDFBOX-NOTICE.txt.
+Source: https://github.com/TomRoush/PdfBox-Android
+
+Bouncy Castle Java 1.72, Copyright (c) 2000-2022 The Legion of the Bouncy Castle Inc.
+https://www.bouncycastle.org/licence.html
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+of the Software, and to permit persons to whom the Software is furnished to do
+so, subject to the following conditions:
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.

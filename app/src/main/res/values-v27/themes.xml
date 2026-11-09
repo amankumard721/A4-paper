@@ -1,0 +1,9 @@
+<resources>
+    <style name="Theme.Lekhak.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/a4_splash_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_a4_splash</item>
+        <item name="android:windowLightStatusBar">@bool/a4_splash_light_bars</item>
+        <item name="android:windowLightNavigationBar">@bool/a4_splash_light_bars</item>
+        <item name="postSplashScreenTheme">@style/Theme.Lekhak</item>
+    </style>
+</resources>

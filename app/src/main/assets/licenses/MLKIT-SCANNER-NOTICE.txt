@@ -1,0 +1,10 @@
+Google ML Kit Document Scanner / Google Play services
+SDK: com.google.android.gms:play-services-mlkit-document-scanner:16.0.0
+Copyright Google LLC and contributors.
+Usage terms: https://developers.google.com/ml-kit/terms
+Android data disclosure: https://developers.google.com/ml-kit/android-data-disclosure
+Scanner guide: https://developers.google.com/ml-kit/vision/doc-scanner/android
+The scanner interface and components are delivered by Google Play services.
+Initial setup may need internet. Scan contents are processed on-device. Google
+components may process technical usage, device and diagnostic information
+under Google's terms. This app does not receive documents on a server.

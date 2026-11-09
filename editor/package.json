@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
-    "test": "node tests/layout.test.mjs && node tests/security.test.mjs && node tests/hardening.test.mjs"
+    "test": "node tests/layout.test.mjs && node tests/security.test.mjs && node tests/image-transform.test.mjs && node tests/hardening.test.mjs"
   },
   "dependencies": {
     "@tiptap/core": "2.11.5",

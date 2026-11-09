@@ -17,6 +17,8 @@ internal data class MediaSelection(
     val canSplit: Boolean = false,
     val image: Boolean = false,
     val imageWidth: Int = 50,
+    val imageRotation: Float = 0f,
+    val imageAspectLocked: Boolean = true,
     val imageAlign: String = "left",
     val border: Int = 1,
 )
@@ -34,6 +36,8 @@ internal fun MediaToolsSheet(
     var columns by remember { mutableIntStateOf(3) }
     var imageWidth by
         remember(selection.imageWidth) { mutableFloatStateOf(selection.imageWidth.toFloat()) }
+    var imageRotation by
+        remember(selection.imageRotation) { mutableFloatStateOf(selection.imageRotation) }
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
@@ -98,8 +102,8 @@ internal fun MediaToolsSheet(
                         }
                         Text(
                             tr(
-                                "Tap inside an existing table to see its editing tools. Drag the blue ↔ grips on the page to resize columns.",
-                                "मौजूदा टेबल के सेल पर टैप करें। पेज पर नीले ↔ हैंडल खींचकर कॉलम की चौड़ाई बदलें।",
+                                "Tap inside an existing table to see its editing tools. Drag ↔ for columns, ↕ for row height, or the corner handle to resize the table.",
+                                "मौजूदा टेबल के सेल पर टैप करें। कॉलम के लिए ↔, पंक्ति की ऊँचाई के लिए ↕, या कोने का हैंडल खींचकर टेबल का आकार बदलें।",
                             ),
                             style = MaterialTheme.typography.bodyMedium,
                         )
@@ -110,8 +114,8 @@ internal fun MediaToolsSheet(
                         )
                         Text(
                             tr(
-                                "Close this panel and drag ↔ on a column boundary. The next column adjusts with it.",
-                                "यह पैनल बंद करके कॉलम की सीमा पर ↔ खींचें। पास वाला कॉलम भी उसी अनुसार बदलेगा।",
+                                "Close this panel and drag ↔ on column borders, ↕ on row borders, or the corner handle to resize.",
+                                "यह पैनल बंद करके कॉलम सीमा पर ↔, पंक्ति सीमा पर ↕, या कोने का हैंडल खींचकर आकार बदलें।",
                             ),
                             style = MaterialTheme.typography.bodyMedium,
                         )
@@ -204,8 +208,8 @@ internal fun MediaToolsSheet(
                         }
                         Text(
                             tr(
-                                "Tap an image on the page to show its corner handles. Drag a corner to resize without stretching it.",
-                                "पेज पर चित्र टैप करें। उसके कोने का हैंडल खींचकर अनुपात बनाए रखते हुए आकार बदलें।",
+                                "Tap an image: corners resize, sides stretch, and the round handle rotates.",
+                                "चित्र टैप करें: कोनों से आकार, किनारों से खिंचाव और गोल हैंडल से घुमाएँ।",
                             ),
                             style = MaterialTheme.typography.bodyMedium,
                         )
@@ -216,8 +220,8 @@ internal fun MediaToolsSheet(
                         )
                         Text(
                             tr(
-                                "Drag a corner on the page, or set the width here. Image proportions stay locked.",
-                                "पेज पर कोना खींचें या यहाँ चौड़ाई चुनें। चित्र का अनुपात वही रहेगा।",
+                                "Use corner and side handles on the page. Set a precise angle below.",
+                                "पेज के कोनों और किनारों से आकार बदलें। नीचे सही कोण चुनें।",
                             ),
                             style = MaterialTheme.typography.bodyMedium,
                         )
@@ -241,6 +245,42 @@ internal fun MediaToolsSheet(
                                     label = { Text("$v%") },
                                 )
                             }
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                tr("Keep corner proportions", "कोनों से अनुपात बनाए रखें"),
+                                Modifier.weight(1f),
+                            )
+                            Switch(
+                                selection.imageAspectLocked,
+                                { command("imageAspectLocked", it.toString()) },
+                            )
+                        }
+                        Text(
+                            tr(
+                                "Rotation: ${"%.1f".format(imageRotation)}°",
+                                "घुमाव: ${"%.1f".format(imageRotation)}°",
+                            )
+                        )
+                        Slider(
+                            value = imageRotation,
+                            onValueChange = { imageRotation = it },
+                            valueRange = 0f..360f,
+                            onValueChangeFinished = {
+                                command("imageRotation", imageRotation.toString())
+                            },
+                        )
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf(0, 45, 90, 180, 270).forEach { angle ->
+                                FilterChip(
+                                    selection.imageRotation.toInt() == angle,
+                                    { command("imageRotation", angle.toString()) },
+                                    label = { Text("$angle°") },
+                                )
+                            }
+                        }
+                        TextButton(onClick = { command("imageReset", null) }) {
+                            Text(tr("Reset shape & rotation", "आकार और घुमाव रीसेट करें"))
                         }
                         Text(tr("Position", "स्थिति"), style = MaterialTheme.typography.titleSmall)
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

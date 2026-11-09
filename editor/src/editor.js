@@ -1,3 +1,5 @@
+import { searchExtension, searchCommand } from './search.js';
+import { Highlight } from './highlight.js';
 import { Editor, Extension, Node, getSchema } from '@tiptap/core';
 import { selectedTable } from './resize.js';
 import { Selection } from '@tiptap/pm/state';
@@ -25,8 +27,62 @@ function currentTextColor(){
   const marks=editor.state.storedMarks ?? (editor.state.selection.empty ? editor.state.selection.$from.marks() : null);
   return (marks ? marks.find(mark=>mark.type.name==='textStyle')?.attrs.color : editor.getAttributes('textStyle').color)||'#111827';
 }
-function state(){send('selection',{bold:editor.isActive('bold'),italic:editor.isActive('italic'),underline:editor.isActive('underline'),color:currentTextColor(),isTable:!!selectedTable(editor.state),canMerge:!!editor.state.selection.$anchorCell&&!!editor.state.selection.$headCell&&editor.state.selection.$anchorCell.start(-1)===editor.state.selection.$headCell.start(-1)&&editor.can().mergeCells(),canSplit:editor.can().splitCell(),isImage:editor.state.selection.node?.type.name==='image',imageWidth:editor.getAttributes('image').width||50,imageAlign:editor.getAttributes('image').align||'left',cellBorder:editor.getAttributes('tableCell').borderWidth??editor.getAttributes('tableHeader').borderWidth??1,canUndo:editor.can().undo(),canRedo:editor.can().redo()});}
-const extensions=[StarterKit.configure({codeBlock:false,code:false,horizontalRule:false,blockquote:false}),Underline,TextStyle,Color,FontFamily,TextAlign.configure({types:['heading','paragraph']}),Typography,PageBreak,...mediaExtensions];
+let metricsDoc=null,metrics=null;
+function documentMetrics(){
+  if(metricsDoc===editor.state.doc)return metrics;
+  metricsDoc=editor.state.doc;
+  const docText=metricsDoc.textBetween(0,metricsDoc.content.size,'\n',' ')||'';
+  const trimmed=docText.trim();
+  const wordCount=trimmed?trimmed.split(/\s+/).length:0;
+  const charCount=docText.length;
+  let paragraphCount=0;
+  editor.state.doc.descendants(n=>{if(n.type.name==='paragraph'||n.type.name==='heading')paragraphCount++;});
+  if(!paragraphCount&&charCount)paragraphCount=1;
+  metrics={wordCount,charCount,paragraphCount};return metrics;
+}
+function state(){
+  const {wordCount,charCount,paragraphCount}=documentMetrics();
+  const heading=editor.isActive('heading',{level:1})?1:editor.isActive('heading',{level:2})?2:editor.isActive('heading',{level:3})?3:0;
+  const align=editor.isActive({textAlign:'center'})?'center':editor.isActive({textAlign:'right'})?'right':editor.isActive({textAlign:'justify'})?'justify':'left';
+  const textAttrs=editor.getAttributes('textStyle');
+  const paraAttrs=editor.getAttributes('paragraph');
+  const headAttrs=editor.getAttributes('heading');
+  const fontSize=parseInt(textAttrs.fontSize||settings.fontSize||'12',10)||12;
+  const fontFamily=(textAttrs.fontFamily||settings.fontFamily||'Noto Sans').replace(/['"]/g,'').split(',')[0].trim();
+  const lineHeight=parseFloat(paraAttrs.lineHeight||headAttrs.lineHeight||settings.lineHeight||1.5)||1.15;
+  const paragraphSpacing=parseInt(paraAttrs.paragraphSpacing??headAttrs.paragraphSpacing??settings.paragraphSpacing??'0',10)||0;
+  send('selection',{
+    bold:editor.isActive('bold'),
+    italic:editor.isActive('italic'),
+    underline:editor.isActive('underline'),
+    strike:editor.isActive('strike'),
+    color:currentTextColor(),
+    highlight:editor.getAttributes('highlight').color||'',
+    align,
+    heading,
+    bulletList:editor.isActive('bulletList'),
+    orderedList:editor.isActive('orderedList'),
+    fontSize,
+    fontFamily,
+    lineHeight,
+    paragraphSpacing,
+    wordCount,
+    charCount,
+    paragraphCount,
+    isTable:!!selectedTable(editor.state),
+    canMerge:!!editor.state.selection.$anchorCell&&!!editor.state.selection.$headCell&&editor.state.selection.$anchorCell.start(-1)===editor.state.selection.$headCell.start(-1)&&editor.can().mergeCells(),
+    canSplit:editor.can().splitCell(),
+    isImage:editor.state.selection.node?.type.name==='image',
+    imageWidth:editor.getAttributes('image').width||50,
+    imageAlign:editor.getAttributes('image').align||'left',
+    imageRotation:editor.getAttributes('image').rotation||0,
+    imageAspectLocked:editor.getAttributes('image').aspectLocked!==false,
+    cellBorder:editor.getAttributes('tableCell').borderWidth??editor.getAttributes('tableHeader').borderWidth??1,
+    canUndo:editor.can().undo(),
+    canRedo:editor.can().redo()
+  });
+}
+const extensions=[StarterKit.configure({codeBlock:false,code:false,horizontalRule:false,blockquote:false}),Underline,TextStyle,Color,FontFamily,TextAlign.configure({types:['heading','paragraph']}),Typography,PageBreak,Highlight,searchExtension(send),...mediaExtensions];
 function sanitizePaste(html){const d=new DOMParser().parseFromString(html,'text/html');d.querySelectorAll('script,iframe,img,svg,object,embed,style,link,meta').forEach(e=>e.remove());d.querySelectorAll('*').forEach(e=>{for(const a of [...e.attributes])if(a.name.startsWith('on')||['href','src','srcset'].includes(a.name))e.removeAttribute(a.name);});return d.body.innerHTML;}
 function preview(){const html=editor.getHTML(),page={...settings};const key=html+JSON.stringify(page);const next=layoutTail.then(async()=>{if(key!==layoutKey){layoutResult=await paginate(html,page);layoutKey=key;}send('layout',layoutResult);return layoutResult;});layoutTail=next.catch(()=>{});return next;}
 window.Lekhak={
@@ -57,17 +113,26 @@ window.Lekhak={
     return document.activeElement===editor.view.dom;
   },
   async command(name,value){
-    if(!editor || mode==='review')return;
-    if(savedSelection)editor.view.dispatch(editor.state.tr.setSelection(Selection.fromJSON(editor.state.doc,savedSelection)));
+    if(!editor)return;
+    if(searchCommand(editor,name,value,mode==='write'))return;
+    if(mode!=='write')return;
+    if(savedSelection){
+      const tr=editor.state.tr;
+      // Resolve against this transaction's document (table normalization may have changed it).
+      try{tr.setSelection(Selection.fromJSON(tr.doc,savedSelection));editor.view.dispatch(tr);}
+      catch(error){if(!(error instanceof RangeError))throw error;savedSelection=editor.state.selection.toJSON();}
+    }
     if(['image','deleteImage','table','deleteTable'].includes(name))editor.view.dispatch(closeHistory(editor.state.tr));
     let chain=editor.chain().focus();
     switch(name){
-      case 'bold':chain.toggleBold().run();break;case 'italic':chain.toggleItalic().run();break;case 'underline':chain.toggleUnderline().run();break;
+      case 'bold':chain.toggleBold().run();break;case 'italic':chain.toggleItalic().run();break;case 'underline':chain.toggleUnderline().run();break;case 'strike':chain.toggleStrike().run();break;
       case 'undo':chain.undo().run();break;case 'redo':chain.redo().run();break;
       case 'bulletList':chain.toggleBulletList().run();break;case 'orderedList':chain.toggleOrderedList().run();break;
+      case 'heading':if(+value>=1&&+value<=3)chain.setHeading({level:+value}).run();else chain.setParagraph().run();break;
       case 'align':if(['left','center','right','justify'].includes(value))chain.setTextAlign(value).run();break;
       case 'fontSize':if(+value>=8&&+value<=72)chain.setMark('textStyle',{fontSize:`${+value}pt`}).run();break;
       case 'fontFamily':if(['Noto Sans','Noto Serif','Monospace'].includes(value))chain.setFontFamily(`'${value}','Noto Devanagari'`).run();break;
+      case 'highlight':if(!value||value==='none')chain.unsetMark('highlight').run();else if(/^#[0-9a-f]{6}$/i.test(value))chain.setMark('highlight',{color:value}).run();break;
       case 'color':if(/^#[0-9a-f]{6}$/i.test(value))chain.setColor(value).run();break;
       case 'lineHeight':if(+value>=1&&+value<=2.5)chain.updateAttributes('paragraph',{lineHeight:+value}).updateAttributes('heading',{lineHeight:+value}).run();break;
       case 'paragraphSpacing':if(+value>=0&&+value<=30)chain.updateAttributes('paragraph',{paragraphSpacing:`${+value}pt`}).updateAttributes('heading',{paragraphSpacing:`${+value}pt`}).run();break;
@@ -78,7 +143,15 @@ window.Lekhak={
       case 'pageBreak':chain.insertContent([{type:'pageBreak'},{type:'paragraph'}]).run();break;
       case 'clear':chain.clearNodes().resetAttributes('paragraph',['textAlign','lineHeight','paragraphSpacing']).unsetAllMarks().run();if(editor.state.selection.empty)editor.view.dispatch(editor.state.tr.setStoredMarks([]));break;
       case 'snapshot':report();break;
-      case 'table':{const v=JSON.parse(value||'{}');chain.insertTable({rows:Math.max(1,Math.min(20,+v.rows||3)),cols:Math.max(1,Math.min(8,+v.cols||3)),withHeaderRow:true}).run();break;}
+      case 'table':{
+        const v=JSON.parse(value||'{}');
+        chain.insertTable({rows:Math.max(1,Math.min(20,+v.rows||3)),cols:Math.max(1,Math.min(8,+v.cols||3)),withHeaderRow:true}).run();
+        if(editor.state.doc.lastChild?.type.name==='table'){
+          // Insertion maps the current cell selection onto the new document automatically.
+          editor.view.dispatch(editor.state.tr.insert(editor.state.doc.content.size,editor.state.schema.nodes.paragraph.create()));
+        }
+        break;
+      }
       case 'addRowAfter':case 'deleteRow':case 'addColumnAfter':case 'deleteColumn':case 'deleteTable':case 'toggleHeaderRow':case 'splitCell':chain[name]().run();break;
       case 'mergeCells':{
         const s=editor.state.selection;
@@ -88,6 +161,9 @@ window.Lekhak={
       case 'cellBorder':chain.setCellAttribute('borderWidth',Math.max(0,Math.min(2,+value||0))).run();break;
       case 'image':{const v=JSON.parse(value);if(!assetPattern.test(v.assetId))throw Error('Invalid private image');chain.setImage({assetId:v.assetId,src:assetUrl(v.assetId),alt:v.signature?'Signature':'Document image',width:v.signature?30:60,align:'left'}).run();break;}
       case 'imageWidth':chain.updateAttributes('image',{width:Math.max(10,Math.min(100,+value||50))}).run();break;
+      case 'imageRotation':{const n=Number(value);if(Number.isFinite(n))chain.updateAttributes('image',{rotation:((n%360)+360)%360}).run();break;}
+      case 'imageAspectLocked':chain.updateAttributes('image',{aspectLocked:value!=='false'}).run();break;
+      case 'imageReset':chain.updateAttributes('image',{rotation:0,stretchRatio:null,aspectLocked:true}).run();break;
       case 'imageAlign':if(['left','center','right'].includes(value))chain.updateAttributes('image',{align:value}).run();break;
       case 'deleteImage':if(editor.state.selection.node?.type.name==='image')chain.deleteSelection().run();else chain.deleteNode('image').run();break;
       default:throw new Error('Unknown editor action');
@@ -105,10 +181,65 @@ window.Lekhak={
 // Focus synchronously within the user gesture so Android can open the IME.
 // Text, table, image and selection gestures retain ProseMirror's native handling.
 document.getElementById('write').addEventListener('click',event=>{
-  if(!editor || editor.isDestroyed || mode!=='write' || event.target.closest('.tiptap'))return;
-  const view=editor.view;
+  if(!editor || editor.isDestroyed || mode!=='write')return;
+  if(event.target.closest('td,th,p,h1,h2,h3,ul,ol,li,blockquote,pre,img,.resize-tools,button'))return;
+  const view=editor.view,doc=view.state.doc;
+  const tables=[...view.dom.querySelectorAll('table')];
+  if(tables.length){
+    const lastTable=tables[tables.length-1],lastRect=lastTable.getBoundingClientRect();
+    if(event.clientY>lastRect.bottom){
+      event.preventDefault();
+      if(doc.lastChild?.type.name==='table'){
+        const insertPos=doc.content.size;
+        const tr=view.state.tr.insert(insertPos,view.state.schema.nodes.paragraph.create());
+        tr.setSelection(Selection.near(tr.doc.resolve(insertPos+1)));
+        view.dispatch(tr);
+      }else{
+        view.dispatch(view.state.tr.setSelection(Selection.atEnd(doc)));
+      }
+      view.focus();
+      return;
+    }
+    const firstTable=tables[0],firstRect=firstTable.getBoundingClientRect();
+    if(event.clientY<firstRect.top){
+      event.preventDefault();
+      if(doc.firstChild?.type.name==='table'){
+        const tr=view.state.tr.insert(0,view.state.schema.nodes.paragraph.create());
+        tr.setSelection(Selection.near(tr.doc.resolve(1)));
+        view.dispatch(tr);
+      }else{
+        view.dispatch(view.state.tr.setSelection(Selection.atStart(doc)));
+      }
+      view.focus();
+      return;
+    }
+  }
   const hit=view.posAtCoords({left:event.clientX,top:event.clientY});
-  const selection=hit ? Selection.near(view.state.doc.resolve(hit.pos)) : Selection.atEnd(view.state.doc);
+  if(hit){
+    const $pos=doc.resolve(hit.pos);
+    let inTable=false;
+    for(let d=$pos.depth;d>0;d--){
+      if($pos.node(d).type.name==='table'){inTable=true;break;}
+    }
+    const insideAnyTable=tables.some(t=>{
+      const r=t.getBoundingClientRect();
+      return event.clientX>=r.left&&event.clientX<=r.right&&event.clientY>=r.top&&event.clientY<=r.bottom;
+    });
+    if(!insideAnyTable && inTable){
+      // Hit resolved inside table cell but click was outside table
+      if(doc.lastChild?.type.name==='table'){
+        const insertPos=doc.content.size;
+        const tr=view.state.tr.insert(insertPos,view.state.schema.nodes.paragraph.create());
+        tr.setSelection(Selection.near(tr.doc.resolve(insertPos+1)));
+        view.dispatch(tr);
+      }else{
+        view.dispatch(view.state.tr.setSelection(Selection.atEnd(doc)));
+      }
+      view.focus();
+      return;
+    }
+  }
+  const selection=hit ? Selection.near(doc.resolve(hit.pos)) : Selection.atEnd(doc);
   view.dispatch(view.state.tr.setSelection(selection));
   view.focus();
 });

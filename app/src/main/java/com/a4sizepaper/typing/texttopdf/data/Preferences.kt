@@ -20,6 +20,8 @@ data class AppPreferences(
     val onboarded: Boolean = false,
     val autosave: Boolean = true,
     val defaults: PageSettings = PageSettings(),
+    val documentSort: String = "modified",
+    val documentGrid: Boolean = true,
 )
 
 @Singleton
@@ -29,6 +31,8 @@ class PreferenceRepository @Inject constructor(@ApplicationContext private val c
     private val onboarded = booleanPreferencesKey("onboarded")
     private val autosave = booleanPreferencesKey("autosave")
     private val defaults = stringPreferencesKey("defaults")
+    private val documentSort = stringPreferencesKey("document_sort")
+    private val documentGrid = booleanPreferencesKey("document_grid")
     val flow =
         context.preferences.data
             .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
@@ -41,8 +45,17 @@ class PreferenceRepository @Inject constructor(@ApplicationContext private val c
                     p[defaults]?.let {
                         runCatching { PageSettings.fromJson(JSONObject(it)) }.getOrNull()
                     } ?: PageSettings(),
+                    p[documentSort] ?: "modified",
+                    p[documentGrid] ?: true,
                 )
             }
+
+    suspend fun updateLibrary(sort: String? = null, grid: Boolean? = null) {
+        context.preferences.edit { prefs ->
+            sort?.let { prefs[documentSort] = it }
+            grid?.let { prefs[documentGrid] = it }
+        }
+    }
 
     suspend fun update(value: AppPreferences) {
         context.preferences.edit { p ->

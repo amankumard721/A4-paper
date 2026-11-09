@@ -2,6 +2,12 @@ package com.a4sizepaper.typing.texttopdf.editor
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.Intent
+import android.graphics.Rect
+import android.view.ActionMode
+import android.view.Menu
+import android.view.MenuItem
+import android.view.View
 import android.webkit.*
 import androidx.webkit.WebViewAssetLoader
 import androidx.webkit.WebViewCompat
@@ -22,6 +28,57 @@ class EditorHost(context: Context, private val onMessage: (JSONObject) -> Unit) 
     private var restoreInputAfterWindowFocus = false
     private var screenPaused = false
     private var startTypingRequested = false
+
+    private var selectionToolsEnabled = false
+    private var selectionLanguage = "en"
+
+    override fun startActionMode(callback: ActionMode.Callback, type: Int): ActionMode? {
+        if (type != ActionMode.TYPE_FLOATING || !selectionToolsEnabled) {
+            return super.startActionMode(callback, type)
+        }
+        val actions = listOf(
+            Triple(0x00A40001, "bold", if (selectionLanguage == "hi") "बोल्ड" else "Bold"),
+            Triple(0x00A40002, "italic", if (selectionLanguage == "hi") "इटैलिक" else "Italic"),
+            Triple(0x00A40003, "underline", if (selectionLanguage == "hi") "रेखांकित" else "Underline"),
+        )
+        return super.startActionMode(object : ActionMode.Callback2() {
+            override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean =
+                callback.onCreateActionMode(mode, menu)
+
+            override fun onPrepareActionMode(mode: ActionMode, menu: Menu): Boolean {
+                val changed = callback.onPrepareActionMode(mode, menu)
+                // WebView rebuilds its selection menu as the handles move.
+                for (index in 0 until menu.size()) {
+                    val item = menu.getItem(index)
+                    if (item.intent?.action == Intent.ACTION_PROCESS_TEXT) {
+                        item.setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
+                    }
+                }
+                var added = false
+                for ((id, _, label) in actions) {
+                    if (menu.findItem(id) == null) {
+                        menu.add(0, id, 100, label).setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM)
+                        added = true
+                    }
+                }
+                return changed || added
+            }
+
+            override fun onActionItemClicked(mode: ActionMode, item: MenuItem): Boolean {
+                val action = actions.firstOrNull { it.first == item.itemId }
+                    ?: return callback.onActionItemClicked(mode, item)
+                if (selectionToolsEnabled) command(action.second)
+                return true
+            }
+
+            override fun onDestroyActionMode(mode: ActionMode) = callback.onDestroyActionMode(mode)
+
+            override fun onGetContentRect(mode: ActionMode, view: View, outRect: Rect) {
+                if (callback is ActionMode.Callback2) callback.onGetContentRect(mode, view, outRect)
+                else super.onGetContentRect(mode, view, outRect)
+            }
+        }, type)
+    }
 
     override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
         if (!hasWindowFocus && !screenPaused) restoreInputAfterWindowFocus = hasFocus()
@@ -225,6 +282,8 @@ class EditorHost(context: Context, private val onMessage: (JSONObject) -> Unit) 
         dark: Boolean = false,
         renderOnly: Boolean = false,
     ) {
+        selectionLanguage = language
+        selectionToolsEnabled = !renderOnly
         payloadToken = java.util.UUID.randomUUID().toString()
         payload = {
             document
@@ -267,6 +326,7 @@ class EditorHost(context: Context, private val onMessage: (JSONObject) -> Unit) 
         )
 
     fun setReview(review: Boolean) {
+        selectionToolsEnabled = !review
         if (review) {
             startTypingRequested = false
             restoreInputAfterWindowFocus = false

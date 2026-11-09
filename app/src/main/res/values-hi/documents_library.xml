@@ -1,0 +1,30 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="library_documents">दस्तावेज़</string>
+    <string name="library_saved_on_this_device">इस डिवाइस पर सेव</string>
+    <string name="library_import">इम्पोर्ट</string>
+    <string name="library_find_your_documents">दस्तावेज़ खोजें…</string>
+    <string name="library_clear_search">खोज साफ़ करें</string>
+    <string name="library_last_edited">हाल में बदले</string>
+    <string name="library_newest">नवीनतम</string>
+    <string name="library_title">शीर्षक</string>
+    <string name="library_your_library">आपकी लाइब्रेरी</string>
+    <string name="library_grid">ग्रिड</string>
+    <string name="library_list">सूची</string>
+    <string name="library_your_library_is_empty">आपकी लाइब्रेरी खाली है</string>
+    <string name="library_no_documents_found">कोई दस्तावेज़ नहीं मिला</string>
+    <string name="library_new_document">नया दस्तावेज़</string>
+    <string name="library_try_another_name_or_create_a_document">दूसरा नाम खोजें या नया दस्तावेज़ बनाएँ</string>
+    <string name="library_saved_pdfs">सेव की गई PDF</string>
+    <string name="library_rename">नाम बदलें</string>
+    <string name="library_share">शेयर करें</string>
+    <string name="library_save_as_pdf">PDF के रूप में सेव करें</string>
+    <string name="library_duplicate">कॉपी बनाएँ</string>
+    <string name="library_delete">हटाएँ</string>
+    <string name="library_untitled_document">नया दस्तावेज़</string>
+    <string name="library_more_options">और विकल्प</string>
+    <plurals name="library_files">
+        <item quantity="one">%d फ़ाइल</item>
+        <item quantity="other">%d फ़ाइलें</item>
+    </plurals>
+</resources>

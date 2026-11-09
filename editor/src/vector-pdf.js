@@ -1,4 +1,5 @@
-import { PDFDocument, rgb } from 'pdf-lib';
+import { imageGeometry } from './image-geometry.js';
+import { PDFDocument, rgb, degrees } from 'pdf-lib';
 import * as fontkit from 'fontkit';
 import createModule from 'harfbuzzjs/hb.js';
 import hbjs from 'harfbuzzjs/hbjs.js';
@@ -21,7 +22,7 @@ export async function createVectorPdf(settings,{title='Document',progress=()=>{}
   const fonts=new Map(),embeddedImages=new Map(),runs=new WordFonts(pdf);
   const pagesElement=document.getElementById('pages'),oldZoom=pagesElement.style.zoom;
   pagesElement.style.zoom='1';
-  const getFont=async (style,text='')=>{
+  const getFont=async (style,text='',fallback=false)=>{
     const needsFallback=/[\u0900-\u097f]/u.test(text);
     const family=style.fontFamily.includes('Noto Serif')?(needsFallback?'NotoSansDevanagari':'NotoSerif'):style.fontFamily.toLowerCase().includes('monospace')?(needsFallback?'NotoSansDevanagari':'NotoSansMono'):'NotoSans';
     const name=family+(Number(style.fontWeight)>=600?'-Bold':'-Regular');
@@ -32,7 +33,12 @@ export async function createVectorPdf(settings,{title='Document',progress=()=>{}
       font.shape=text=>{const buffer=hb.createBuffer();try{buffer.addText(text);buffer.guessSegmentProperties();hb.shape(hbfont,buffer);const glyphs=buffer.json();return{glyphs:glyphs.map(g=>font.getGlyph(g.g)),positions:glyphs.map(g=>({xAdvance:g.ax,yAdvance:g.ay,xOffset:g.dx,yOffset:g.dy}))};}finally{buffer.destroy();}};
       fonts.set(name,{font,dispose:()=>{hbfont.destroy();face.destroy();blob.destroy();}});
     }
-    return fonts.get(name).font;
+    const font=fonts.get(name).font;
+    // Word documents often contain symbols absent from the Latin/Devanagari subset.
+    // Use the already bundled mono font when it supplies the missing grapheme.
+    const supported=[...text].every(c=>/[\u200c\u200d\ufe0e\ufe0f]/u.test(c)||font.hasGlyphForCodePoint(c.codePointAt(0)));
+    if(!supported&&!fallback&&family!=='NotoSansMono')return getFont({fontFamily:'monospace',fontWeight:style.fontWeight},text,true);
+    return font;
   };
   try{
     const pageNodes=[...pagesElement.querySelectorAll('.page')];
@@ -48,10 +54,20 @@ export async function createVectorPdf(settings,{title='Document',progress=()=>{}
         if(style.backgroundColor!=='rgba(0, 0, 0, 0)')page.drawRectangle({x:(bounds.left-rect.left)*.75,y:page.getHeight()-(bounds.bottom-rect.top)*.75,width:bounds.width*.75,height:bounds.height*.75,color:rgb(...color(style.backgroundColor))});
         if(parseFloat(style.borderTopWidth)>0)page.drawRectangle({x:(bounds.left-rect.left)*.75,y:page.getHeight()-(bounds.bottom-rect.top)*.75,width:bounds.width*.75,height:bounds.height*.75,borderColor:rgb(...color(style.borderTopColor)),borderWidth:parseFloat(style.borderTopWidth)*.75});
       }
+      // Paint persistent text highlights before glyphs, using each wrapped inline fragment.
+      for(const mark of body.querySelectorAll('mark[data-highlight]')){
+        const fill=getComputedStyle(mark).backgroundColor;
+        for(const bounds of mark.getClientRects()){
+          if(bounds.width&&bounds.height)page.drawRectangle({x:(bounds.left-rect.left)*.75,y:page.getHeight()-(bounds.bottom-rect.top)*.75,width:bounds.width*.75,height:bounds.height*.75,color:rgb(...color(fill))});
+        }
+      }
       for(const image of body.querySelectorAll('img')){
         if(!image.complete||!image.naturalWidth)throw Error('An image is missing. Reinsert it before exporting.');
         if(!embeddedImages.has(image.src)){const response=await fetch(image.src);if(!response.ok)throw Error('Image cannot be read');embeddedImages.set(image.src,await (new URL(image.src).pathname.endsWith('.jpg') ? pdf.embedJpg(await response.arrayBuffer()) : pdf.embedPng(await response.arrayBuffer())));}
-        const r=image.getBoundingClientRect();page.drawImage(embeddedImages.get(image.src),{x:(r.left-rect.left)*.75,y:page.getHeight()-(r.bottom-rect.top)*.75,width:r.width*.75,height:r.height*.75});
+        const frame=image.closest('[data-image-frame]');
+        if(frame){const r=frame.getBoundingClientRect(),g=imageGeometry(frame.dataset.rotation,Number(frame.dataset.stretchRatio)||image.naturalHeight/image.naturalWidth),w=r.width/g.x*.75,h=w*g.ratio,t=-g.angle*Math.PI/180,cx=(r.left+r.width/2-rect.left)*.75,cy=page.getHeight()-(r.top+r.height/2-rect.top)*.75;
+          page.drawImage(embeddedImages.get(image.src),{x:cx-w*Math.cos(t)/2+h*Math.sin(t)/2,y:cy-w*Math.sin(t)/2-h*Math.cos(t)/2,width:w,height:h,rotate:degrees(-g.angle)});
+        }else{const r=image.getBoundingClientRect();page.drawImage(embeddedImages.get(image.src),{x:(r.left-rect.left)*.75,y:page.getHeight()-(r.bottom-rect.top)*.75,width:r.width*.75,height:r.height*.75});}
       }
       const walker=document.createTreeWalker(body,NodeFilter.SHOW_TEXT);let textNode;const lines=[];
       while((textNode=walker.nextNode())){
@@ -60,11 +76,11 @@ export async function createVectorPdf(settings,{title='Document',progress=()=>{}
         // Range token measurement reads layout only; it never mutates editor content.
         const tokens=/monospace|Noto Serif/i.test(style.fontFamily)?/[\u0900-\u097f\u200c\u200d]+|[^\u0900-\u097f\u200c\u200d\s]+|\s+/gu:/\S+|\s+/gu;
         for(const match of text.matchAll(tokens)){
-          const font=await getFont(style,match[0]);
           const start=match.index,end=start+match[0].length,range=document.createRange();range.setStart(textNode,start);range.setEnd(textNode,end);
           let parts=[{text:match[0],range}];
           {parts=[];for(const segment of new Intl.Segmenter('hi',{granularity:'grapheme'}).segment(match[0])){const r=document.createRange();r.setStart(textNode,start+segment.index);r.setEnd(textNode,start+segment.index+segment.segment.length);parts.push({text:segment.segment,range:r});}}
           for(const part of parts){const r=part.range.getBoundingClientRect();if(!r.height)continue;
+            const font=await getFont(style,part.text);
             const key=[font.lekhakName,size,style.fontStyle,style.color,[...decorations].join(',')].join('|');
             let line=lines.at(-1);
             const parentBlock=textNode.parentElement.closest('p,h1,h2,h3,li,td,th');

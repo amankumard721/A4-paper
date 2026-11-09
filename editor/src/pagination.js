@@ -1,3 +1,4 @@
+import { layoutImage } from './image-geometry.js';
 // Layout uses the browser's shaping and line measurement. No canvas rasterization.
 const MM = 96 / 25.4;
 // Cache exact measured page prefixes, not estimates of shaped paragraph heights.
@@ -58,7 +59,7 @@ export async function paginate(html,settings) {
   const source=document.createElement('div');source.innerHTML=html;
   await Promise.all([...source.querySelectorAll('img')].map(image=>image.decode().catch(()=>{throw Error('An image is missing or unreadable. Reinsert it before preview or export.');})));
   // Clones may decode asynchronously; reserve the known intrinsic aspect ratio now.
-  for(const image of source.querySelectorAll('img'))image.style.aspectRatio=`${image.naturalWidth} / ${image.naturalHeight}`;
+  for(const image of source.querySelectorAll('img')){if(image.parentElement.matches('[data-image-frame]'))layoutImage(image.parentElement);else image.style.aspectRatio=`${image.naturalWidth} / ${image.naturalHeight}`;}
   for(const table of source.querySelectorAll('table')){
     if(table.querySelector('table'))throw Error('Nested tables are not supported in A4 preview.');
     const cols=[...table.querySelectorAll(':scope > colgroup > col')];
@@ -78,6 +79,25 @@ export async function paginate(html,settings) {
     if(performance.now()-lastYield>8){await new Promise(r=>setTimeout(r,0));lastYield=performance.now();}
     let block=blocks[blockIndex];
     if(block.matches('[data-page-break]')){if(contentOnPage && blocks.slice(blockIndex+1).some(x=>!x.matches('[data-page-break]')))newPage();continue;}
+    // Images are atomic: fit the exported copy to one printable page, preserving
+    // the saved stretch/rotation and the original editor document.
+    if(block.matches('img,[data-image-frame]')) {
+      const previous=[...measure.children];
+      for(let attempt=0;attempt<4;attempt++) {
+        const probe=block.cloneNode(true);measure.replaceChildren(probe);
+        const total=measure.getBoundingClientRect().height,rect=probe.getBoundingClientRect();
+        if(total<=height+.1)break;
+        const available=height-Math.max(0,total-rect.height)-2;
+        if(available<=0||rect.height<=0)break;
+        block.style.width=`${Math.max(1,Math.min(width,rect.width)*available/rect.height)}px`;
+        block.style.maxWidth='100%';
+        if(block.matches('img'))block.style.height='auto';
+      }
+      measure.replaceChildren(...previous);
+      if(!fits(block)&&contentOnPage)newPage();
+      if(!fits(block))throw Error('The image cannot fit with these page margins. Reduce the margins.');
+      append(block);continue;
+    }
     if(fits(block)){append(block);continue;}
     if(block.matches('table')&&!block.querySelector('[rowspan]:not([rowspan="1"])')){
       const rows=[...block.querySelectorAll(':scope > tbody > tr')];

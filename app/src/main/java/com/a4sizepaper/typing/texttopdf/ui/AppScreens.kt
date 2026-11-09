@@ -1,43 +1,78 @@
 package com.a4sizepaper.typing.texttopdf.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.outlined.PhotoCamera
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.*
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.a4sizepaper.typing.texttopdf.BuildConfig
+import com.a4sizepaper.typing.texttopdf.ads.AdBanner
+import com.a4sizepaper.typing.texttopdf.ads.AdsController
 import com.a4sizepaper.typing.texttopdf.data.*
 import com.a4sizepaper.typing.texttopdf.domain.*
 import java.text.DateFormat
 import java.util.Date
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LekhakApp(model: MainViewModel) {
+fun LekhakApp(model: MainViewModel, ads: AdsController) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val adsState by ads.state.collectAsStateWithLifecycle()
     val prefs by model.prefs.collectAsStateWithLifecycle()
     val ready by model.recovered.collectAsStateWithLifecycle()
     val p = prefs
@@ -52,6 +87,10 @@ fun LekhakApp(model: MainViewModel) {
         }
         return
     }
+    LaunchedEffect(ads, lifecycle) {
+        lifecycle.currentStateFlow.first { it.isAtLeast(Lifecycle.State.RESUMED) }
+        (context as? android.app.Activity)?.let(ads::start)
+    }
     CompositionLocalProvider(LocalDocumentPreview provides model::previewParagraphs) {
         LekhakTheme(p.theme, p.language) {
             val docs by model.documents.collectAsStateWithLifecycle()
@@ -59,21 +98,239 @@ fun LekhakApp(model: MainViewModel) {
             val error by model.error.collectAsStateWithLifecycle()
             val pdf by model.pdf.collectAsStateWithLifecycle()
             val exporting by model.exporting.collectAsStateWithLifecycle()
+            val importing by model.importing.collectAsStateWithLifecycle()
+            val importNotice by model.importNotice.collectAsStateWithLifecycle()
+            val pendingImport by model.pendingImport.collectAsStateWithLifecycle()
+            val importLabel by model.importLabel.collectAsStateWithLifecycle()
+            val importedPdfs by model.importedPdfs.collectAsStateWithLifecycle()
+            val viewingImportedPdf by model.viewingImportedPdf.collectAsStateWithLifecycle()
             var tab by rememberSaveable { mutableStateOf("home") }
             var screen by rememberSaveable { mutableStateOf("main") }
             var selectedTemplate by rememberSaveable { mutableStateOf<String?>(null) }
             var search by rememberSaveable { mutableStateOf("") }
+            val homeListState = rememberLazyListState()
+            var homeSearchVisible by rememberSaveable { mutableStateOf(false) }
+            val homeSearchFocus = remember { FocusRequester() }
+            val homeKeyboard = LocalSoftwareKeyboardController.current
+            val homeFocusManager = LocalFocusManager.current
+            val pullThreshold = with(LocalDensity.current) { 72.dp.toPx() }
+            val searchPull = remember { floatArrayOf(0f) }
+            fun closeHomeSearch() {
+                homeSearchVisible = false
+                search = ""
+                searchPull[0] = 0f
+                homeFocusManager.clearFocus()
+                homeKeyboard?.hide()
+            }
+            val homeSearchPull = remember(homeListState, pullThreshold) {
+                object : NestedScrollConnection {
+                    override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                        if (source != NestedScrollSource.UserInput) return Offset.Zero
+                        if (tab != "home") {
+                            searchPull[0] = 0f
+                            return Offset.Zero
+                        }
+                        if (homeSearchVisible) {
+                            if (available.y < 0f) {
+                                searchPull[0] += available.y
+                                if (searchPull[0] <= -pullThreshold * .65f) closeHomeSearch()
+                            } else {
+                                searchPull[0] = 0f
+                            }
+                            return Offset.Zero
+                        }
+                        if (available.y <= 0f || homeListState.canScrollBackward) {
+                            searchPull[0] = 0f
+                            return Offset.Zero
+                        }
+                        // Observe the finger before LazyColumn's edge stretch consumes the pull.
+                        // Consume only downward movement at the top; ordinary scrolling is untouched.
+                        searchPull[0] += available.y
+                        if (searchPull[0] >= pullThreshold) {
+                            homeSearchVisible = true
+                            searchPull[0] = 0f
+                        }
+                        return Offset(0f, available.y)
+                    }
+
+                    override suspend fun onPreFling(available: Velocity): Velocity {
+                        searchPull[0] = 0f
+                        return Velocity.Zero
+                    }
+
+                    override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+                        searchPull[0] = 0f
+                        return Velocity.Zero
+                    }
+                }
+            }
+            LaunchedEffect(homeSearchVisible, tab) {
+                if (homeSearchVisible && tab == "home") {
+                    // Finish the header transition before the IME changes the viewport.
+                    kotlinx.coroutines.delay(220)
+                    homeSearchFocus.requestFocus()
+                    homeKeyboard?.show()
+                }
+                if (tab != "home") homeSearchVisible = false
+            }
+            BackHandler(enabled = screen == "main" && tab == "home" && homeSearchVisible) {
+                closeHomeSearch()
+            }
+
+            val settingsListState = rememberLazyListState()
+            val librarySnackbar = remember { SnackbarHostState() }
+            val pendingLibraryDeletes = remember { mutableStateListOf<String>() }
+            val libraryScope = rememberCoroutineScope()
+            val removedMessage = tr("Document removed", "दस्तावेज़ हटाया गया")
+            val undoLabel = tr("Undo", "पूर्ववत करें")
+            val homeScope = rememberCoroutineScope()
             var searchPopup by rememberSaveable { mutableStateOf(false) }
-            var sort by rememberSaveable { mutableStateOf("modified") }
+            var homeUpdates by rememberSaveable { mutableStateOf(false) }
+            var homeUnread by rememberSaveable { mutableStateOf(true) }
             var rename by remember { mutableStateOf<DocumentEntry?>(null) }
             var delete by remember { mutableStateOf<DocumentEntry?>(null) }
             var pageSetup by remember { mutableStateOf(false) }
             var defaultsSetup by remember { mutableStateOf(false) }
+            var defaultViewerPrompt by rememberSaveable { mutableStateOf(false) }
+            val viewerPromptPrefs = remember(context) {
+                context.getSharedPreferences("viewer_prompt", android.content.Context.MODE_PRIVATE)
+            }
+            fun offerDefaultViewerPrompt(external: Boolean) {
+                if (external && !viewerPromptPrefs.getBoolean("shown", false)) {
+                    viewerPromptPrefs.edit().putBoolean("shown", true).apply()
+                    defaultViewerPrompt = true
+                }
+            }
+            var defaultViewerHelp by rememberSaveable { mutableStateOf(false) }
             var info by remember { mutableStateOf<String?>(null) }
-            var editorReview by rememberSaveable(current?.id) { mutableStateOf(false) }
+            var importedEditorId by rememberSaveable { mutableStateOf<String?>(null) }
+            var editorReview by
+                rememberSaveable(current?.id) { mutableStateOf(model.importNotice.value != null) }
             var pdfAction by rememberSaveable { mutableStateOf<String?>(null) }
             var awaitingPdf by rememberSaveable { mutableStateOf(false) }
+            var externalPdfPath by rememberSaveable { mutableStateOf<String?>(null) }
             var pdfReturnScreen by rememberSaveable { mutableStateOf("main") }
+            var pdfPagesDialog by remember { mutableStateOf<ImportedPdfEntry?>(null) }
+            var scanPageLimit by rememberSaveable { mutableIntStateOf(50) }
+            var scanCleanup by rememberSaveable { mutableStateOf(true) }
+            var scanGallery by rememberSaveable { mutableStateOf(true) }
+            val documentScanner =
+                rememberDocumentScanner(
+                    pageLimit = scanPageLimit,
+                    enhancedCleanup = scanCleanup,
+                    allowGallery = scanGallery,
+                    blocked = importing || exporting,
+                    active = screen == "main" || screen == "scanner" || screen == "pdfTools",
+                    language = p.language,
+                    onPdf = { uri, pages ->
+                        val returnScreen = screen
+                        model.importScan(uri, pages) {
+                            selectedTemplate = null
+                            awaitingPdf = false
+                            pdfAction = null
+                            pdfReturnScreen = returnScreen
+                            screen = "pdf"
+                        }
+                    },
+                    onError = { model.error.value = it },
+                )
+            val wordPicker =
+                rememberLauncherForActivityResult(FilteredDocumentContract()) { uri ->
+                    uri?.let { model.offerImport(it, ImportFormat.WORD) }
+                }
+            val excelPicker =
+                rememberLauncherForActivityResult(FilteredDocumentContract()) { uri ->
+                    uri?.let { model.offerImport(it, ImportFormat.EXCEL) }
+                }
+            var requestedPageTool by rememberSaveable { mutableStateOf(PdfPageTool.Manage) }
+            var activePageTool by remember { mutableStateOf(PdfPageTool.Manage) }
+            val pdfPicker =
+                rememberLauncherForActivityResult(FilteredDocumentContract()) { uri ->
+                    if (uri == null) { requestedPageTool = PdfPageTool.Manage }
+                    else model.offerImport(uri, ImportFormat.PDF)
+                }
+            val compressPicker = rememberLauncherForActivityResult(FilteredDocumentContract()) { uri ->
+                uri?.let {
+                    model.compressPdf(it) {
+                        pdfAction = null
+                        pdfReturnScreen = "pdfTools"
+                        screen = "pdf"
+                    }
+                }
+            }
+            var mergeFiles by rememberSaveable { mutableStateOf(arrayListOf<android.net.Uri>()) }
+            val mergePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+                if (uris.isNotEmpty()) {
+                    if (uris.size in 2..12) mergeFiles = ArrayList(uris)
+                    else model.error.value = "Choose 2–12 PDF files."
+                }
+            }
+            val anyPicker =
+                rememberLauncherForActivityResult(FilteredDocumentContract()) { uri ->
+                    uri?.let { model.offerImport(it) }
+                }
+            val homeImagePicker =
+                rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri
+                    ->
+                    uri?.let {
+                        model.importImageDocument(it) {
+                            selectedTemplate = null
+                            editorReview = true
+                            screen = "editor"
+                        }
+                    }
+                }
+            val openImage = {
+                homeImagePicker.launch(
+                    androidx.activity.result.PickVisualMediaRequest(
+                        ActivityResultContracts.PickVisualMedia.ImageOnly
+                    )
+                )
+            }
+            val openExcel = { excelPicker.launch(ImportFormat.EXCEL.mimeTypes) }
+            val openPdf = { pdfPicker.launch(ImportFormat.PDF.mimeTypes) }
+            val openWord = { wordPicker.launch(ImportFormat.WORD.mimeTypes) }
+            val openTool: (() -> Unit) -> Unit = { action ->
+                val activity = context as? android.app.Activity
+                if (activity == null) action() else ads.beforePdfTool(activity, action)
+            }
+            val spreadsheet by model.spreadsheet.collectAsStateWithLifecycle()
+            var spreadsheetReturn by rememberSaveable { mutableStateOf("main") }
+            LaunchedEffect(pendingImport, p.onboarded) {
+                if (p.onboarded)
+                    pendingImport?.let { request ->
+                        if (request.format == ImportFormat.EXCEL) {
+                            val origin = if (screen == "pdfTools") "pdfTools" else "main"
+                            model.openSpreadsheet(request) {
+                                offerDefaultViewerPrompt(request.external)
+                                spreadsheetReturn = origin
+                                screen = "spreadsheet"
+                            }
+                            return@let
+                        }
+                        val pageTool = requestedPageTool
+                        requestedPageTool = PdfPageTool.Manage
+                        model.importFile(request) { isPdf ->
+                            offerDefaultViewerPrompt(request.external)
+                            selectedTemplate = null
+                            if (isPdf) {
+                                externalPdfPath = if (request.external) model.pdf.value?.file?.path else null
+                                awaitingPdf = false
+                                pdfAction = null
+                                pdfReturnScreen = if (screen == "pdfTools") "pdfTools" else "main"
+                                screen = "pdf"
+                                if (pageTool != PdfPageTool.Manage) {
+                                    activePageTool = pageTool
+                                    pdfPagesDialog = model.viewingImportedPdf.value
+                                }
+                            } else {
+                                importedEditorId = model.current.value?.id
+                                editorReview = true
+                                screen = "editor"
+                            }
+                        }
+                    }
+            }
 
             BackHandler(enabled = screen == "main" && tab != "home") {
                 tab = "home"
@@ -88,17 +345,70 @@ fun LekhakApp(model: MainViewModel) {
             }
             LaunchedEffect(current) { if (screen == "editor" && current == null) screen = "main" }
             if (!p.onboarded) {
-                Onboarding { model.preferences(p.copy(onboarded = true)) }
+                Onboarding(ads, p.language) { model.preferences(p.copy(onboarded = true)) }
                 return@LekhakTheme
             }
-            if (screen == "editor" && current != null) {
+            if (screen == "scanner") {
+                ScannerScreen(
+                    pageLimit = scanPageLimit,
+                    onPageLimit = { scanPageLimit = it },
+                    enhancedCleanup = scanCleanup,
+                    onCleanup = { scanCleanup = it },
+                    allowGallery = scanGallery,
+                    onGallery = { scanGallery = it },
+                    preparing = documentScanner.busy || importing,
+                    available = documentScanner.available,
+                    onBack = {
+                        documentScanner.cancelPreparation()
+                        screen = "main"
+                    },
+                    onScan = documentScanner.start,
+                    onImportPdf = openPdf,
+                )
+            } else if (screen == "spreadsheet" && spreadsheet != null) {
+                SpreadsheetScreen(
+                    book = checkNotNull(spreadsheet),
+                    onChange = { model.spreadsheet.value = it },
+                    onBack = { screen = spreadsheetReturn; model.spreadsheet.value = null },
+                    onExport = { action ->
+                        spreadsheet?.let { book ->
+                            if (model.exportSpreadsheet(book)) {
+                                pdfAction = action
+                                pdfReturnScreen = "spreadsheet"
+                                awaitingPdf = true
+                            }
+                        }
+                    },
+                )
+            } else if (screen == "pdfTools") {
+                PdfToolsScreen(
+                    busy = importing || exporting,
+                    onBack = { screen = "main" },
+                    onOpenPdf = openPdf,
+                    onSplit = { openTool { requestedPageTool = PdfPageTool.Split; openPdf() } },
+                    onRemove = { openTool { requestedPageTool = PdfPageTool.Remove; openPdf() } },
+                    banner = { AdBanner(ads, language = p.language) },
+                    onMerge = { openTool { mergePicker.launch(ImportFormat.PDF.mimeTypes) } },
+                    onCompress = { openTool { compressPicker.launch(ImportFormat.PDF.mimeTypes) } },
+                    onScan = documentScanner.start,
+                    onWord = openWord,
+                    onExcel = openExcel,
+                    onImage = openImage,
+                )
+            } else if (screen == "editor" && current != null) {
                 EditorScreen(
                     model,
                     current!!,
                     p,
                     onBack = { screen = "main" },
                     onSetup = { pageSetup = true },
+                    onDelete = {
+                        current?.let { doc ->
+                            delete = DocumentEntry(doc.id, doc.title, doc.createdAt, doc.modifiedAt, doc.isDraft)
+                        }
+                    },
                     review = editorReview,
+                    importedDocument = current?.id == importedEditorId,
                     onReview = { editorReview = it },
                     onExport = { action ->
                         if (model.export()) {
@@ -111,11 +421,34 @@ fun LekhakApp(model: MainViewModel) {
             } else if (screen == "pdf" && pdf != null) {
                 PdfScreen(
                     pdf!!,
+                    onEditText =
+                        viewingImportedPdf?.let { entry ->
+                            {
+                                model.editPdfText(entry) {
+                                    editorReview = true
+                                    screen = "editor"
+                                }
+                            }
+                        },
+                    onManagePages = viewingImportedPdf?.let { entry -> { activePageTool = PdfPageTool.Manage; pdfPagesDialog = entry } },
+                    externalReader = viewingImportedPdf != null || pdf!!.file.path == externalPdfPath,
+                    onSavedExit = { resume ->
+                        val activity = context as? android.app.Activity
+                        if (activity != null && pdf!!.file.path != externalPdfPath) {
+                            ads.afterSavedPdf(activity, resume)
+                        } else {
+                            resume()
+                        }
+                    },
                     initialAction = pdfAction,
                     onActionConsumed = { pdfAction = null },
                     onBack = {
                         screen =
-                            if (pdfReturnScreen == "editor" && current != null) "editor" else "main"
+                            if (pdfReturnScreen == "scanner") "scanner"
+                            else if (pdfReturnScreen == "pdfTools") "pdfTools"
+                            else if (pdfReturnScreen == "spreadsheet" && spreadsheet != null) "spreadsheet"
+                            else if (pdfReturnScreen == "editor" && current != null) "editor"
+                            else "main"
                     },
                 )
             } else if (selectedTemplate != null) {
@@ -129,121 +462,315 @@ fun LekhakApp(model: MainViewModel) {
                     }
                 }
             } else {
-                val visible =
-                    docs
-                        .filter { it.title.contains(search, true) }
-                        .let {
-                            if (sort == "name") it.sortedBy { d -> d.title.lowercase() }
-                            else if (sort == "created") it.sortedByDescending { d -> d.createdAt }
-                            else it
-                        }
-                val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior()
+                val librarySort = p.documentSort
+                val locale = java.util.Locale.forLanguageTag(p.language)
+                val libraryDocs = remember(docs, pendingLibraryDeletes.toList()) {
+                    docs.filterNot { it.id in pendingLibraryDeletes }
+                }
+                val visible = remember(libraryDocs, search, librarySort, locale) {
+                    val collator = java.text.Collator.getInstance(locale)
+                    val matching = libraryDocs.filter { it.title.contains(search, true) }
+                    when (librarySort) {
+                        "name" -> matching.sortedWith { a, b -> collator.compare(a.title, b.title) }
+                        "created" -> matching.sortedByDescending { it.createdAt }
+                        else -> matching.sortedByDescending { it.modifiedAt }
+                    }
+                }
+                HomeColorTheme(
+                    enabled = tab == "home" || tab == "documents" || tab == "settings",
+                    darkTheme = AppTheme.colors == DarkColors,
+                ) {
                 Scaffold(
-                    modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+                    modifier =
+                        if (tab == "home" || tab == "documents" || tab == "settings") Modifier.fillMaxSize().background(homeBackdrop())
+                        else Modifier.fillMaxSize(),
+                    containerColor =
+                        if (tab == "home" || tab == "documents" || tab == "settings") androidx.compose.ui.graphics.Color.Transparent
+                        else MaterialTheme.colorScheme.background,
+                    contentWindowInsets = WindowInsets(0, 0, 0, 0),
                     topBar = {
                         if (tab == "home") {
-                            TopAppBar(
-                                title = {
-                                    Column {
-                                        Text("A4 Paper Typing", fontWeight = FontWeight.Bold)
-                                        Text(
-                                            tr(
-                                                "A little space for your ideas",
-                                                "आपके विचारों के लिए एक जगह",
-                                            ),
-                                            style = MaterialTheme.typography.labelMedium,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        )
-                                    }
+                            Column {
+                            HomeHeader(
+                                query = search,
+                                onQuery = { search = it },
+                                unread = homeUnread,
+                                onUpdates = {
+                                    homeUpdates = true
+                                    homeUnread = false
                                 },
-                                actions = {
-                                    IconButton(onClick = { searchPopup = true }) {
-                                        Icon(
-                                            Icons.Rounded.Search,
-                                            contentDescription = tr("Search", "खोजें"),
-                                        )
-                                    }
+                                onSettings = {
+                                    tab = "settings"
+                                    search = ""
                                 },
-                                scrollBehavior = scrollBehavior,
+                                onSearch = {
+                                    homeSearchVisible = true
+                                },
                             )
+                            AnimatedVisibility(
+                                visible = homeSearchVisible,
+                                enter = expandVertically(animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing)) + fadeIn(tween(140)),
+                                exit = shrinkVertically(animationSpec = tween(180)) + fadeOut(),
+                            ) {
+                                TextField(
+                                    value = search,
+                                    onValueChange = { search = it },
+                                    modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 10.dp).focusRequester(homeSearchFocus),
+                                    placeholder = { Text(tr("Find documents…", "दस्तावेज़ खोजें…")) },
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(28.dp),
+                                    leadingIcon = {
+                                        IconButton(onClick = { closeHomeSearch() }) {
+                                            Icon(Icons.AutoMirrored.Rounded.ArrowBack, tr("Close search", "खोज बंद करें"))
+                                        }
+                                    },
+                                    trailingIcon = {
+                                        if (search.isNotEmpty()) IconButton(onClick = { search = "" }) {
+                                            Icon(Icons.Rounded.Close, tr("Clear search", "खोज मिटाएँ"))
+                                        }
+                                    },
+                                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                                    colors = TextFieldDefaults.colors(
+                                        focusedIndicatorColor = Color.Transparent,
+                                        unfocusedIndicatorColor = Color.Transparent,
+                                        focusedContainerColor = MaterialTheme.colorScheme.surface,
+                                        unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                                    ),
+                                )
+                            }
+                            }
                         }
                     },
                     bottomBar = {
-                        HomeNavigation(tab) { selected ->
-                            tab = selected
-                            search = ""
+                        Column {
+                            if (tab == "documents" && !importing && !exporting) {
+                                AdBanner(
+                                    ads,
+                                    Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                                    p.language,
+                                )
+                            }
+                            HomeNavigation(
+                                tab,
+                                onScan = documentScanner.start,
+                                onPdf = { screen = "pdfTools" },
+                                onAi = {
+                                    android.widget.Toast.makeText(
+                                            context,
+                                            "AI Tools — coming soon",
+                                            android.widget.Toast.LENGTH_SHORT,
+                                        )
+                                        .show()
+                                },
+                            ) { selected ->
+                                tab = selected
+                                search = ""
+                            }
                         }
                     },
-                    floatingActionButton = {
-                        if (tab == "documents")
-                            ExtendedFloatingActionButton(
-                                onClick = { model.create { screen = "editor" } },
-                                icon = { Icon(Icons.Rounded.Add, null) },
-                                text = { Text(tr("New document", "नया दस्तावेज़")) },
-                            )
-                    },
+                    snackbarHost = { SnackbarHost(librarySnackbar) },
                 ) { padding ->
+                    if (tab == "documents") {
+                        val pdfs = remember(importedPdfs, search, librarySort, locale) {
+                            val collator = java.text.Collator.getInstance(locale)
+                            val matching = importedPdfs.filter { it.title.contains(search, true) }
+                            when (librarySort) {
+                                "name" -> matching.sortedWith { a, b -> collator.compare(a.title, b.title) }
+                                "created" -> matching.sortedByDescending { it.createdAt }
+                                else -> matching.sortedByDescending { it.modifiedAt }
+                            }
+                        }
+                        DocumentsLibrary(
+                            modifier = Modifier.fillMaxSize().padding(padding).clipToBounds(),
+                            docs = visible,
+                            pdfs = pdfs,
+                            total = libraryDocs.size + importedPdfs.size,
+                            query = search,
+                            onQuery = { search = it },
+                            sort = librarySort,
+                            onSort = { model.libraryPreferences(sort = it) },
+                            grid = p.documentGrid,
+                            onGrid = { model.libraryPreferences(grid = it) },
+                            language = p.language,
+                            importing = importing,
+                            onImport = { anyPicker.launch(ImportFormat.allMimeTypes) },
+                            onCreate = { model.create { screen = "editor" } },
+                            onOpen = { doc -> model.open(doc.id) { screen = "editor" } },
+                            onExport = { doc, action ->
+                                model.open(doc.id) {
+                                    if (model.export()) {
+                                        pdfAction = action
+                                        pdfReturnScreen = "main"
+                                        awaitingPdf = true
+                                    }
+                                }
+                            },
+                            onRename = { rename = it },
+                            onDuplicate = model::duplicate,
+                            onDelete = { delete = it },
+                            pdfCard = { entry ->
+                                ImportedPdfCard(
+                                    entry,
+                                    onOpen = {
+                                        model.openImportedPdf(entry) {
+                                            pdfAction = null
+                                            pdfReturnScreen = "main"
+                                            screen = "pdf"
+                                        }
+                                    },
+                                    onShare = {
+                                        model.openImportedPdf(entry) {
+                                            pdfAction = "share"
+                                            pdfReturnScreen = "main"
+                                            screen = "pdf"
+                                        }
+                                    },
+                                    onRename = { model.renameImportedPdf(entry, it) },
+                                    onDuplicate = { model.duplicateImportedPdf(entry) },
+                                    onDelete = { model.deleteImportedPdf(entry) },
+                                )
+                            },
+                        )
+                    } else
                     LazyColumn(
-                        Modifier.fillMaxSize().padding(padding),
+                        state = when (tab) { "settings" -> settingsListState; else -> homeListState },
+                        modifier = if (tab == "settings" || tab == "documents" || tab == "home") Modifier.fillMaxSize().then(if (tab == "home") Modifier.nestedScroll(homeSearchPull) else Modifier).padding(
+                            top = padding.calculateTopPadding(), bottom = padding.calculateBottomPadding()
+                        ).then(if (tab == "settings") Modifier.statusBarsPadding() else Modifier).clipToBounds() else Modifier.fillMaxSize().nestedScroll(homeSearchPull),
                         contentPadding =
                             PaddingValues(
                                 start = if (tab == "home") 0.dp else 20.dp,
                                 end = if (tab == "home") 0.dp else 20.dp,
-                                top = 10.dp,
-                                bottom = if (tab == "documents") 100.dp else 24.dp,
+                                top = if (tab == "home") 6.dp else if (tab == "settings" || tab == "documents") 8.dp else padding.calculateTopPadding() + 8.dp,
+                                bottom = if (tab == "settings" || tab == "home") 24.dp else if (tab == "documents") 92.dp else padding.calculateBottomPadding() + 92.dp,
                             ),
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
                         if (tab == "home") {
-                            insetItem { HeroCard { model.create { screen = "editor" } } }
-                            insetItem {
-                                SectionHeading(
-                                    tr("Start with a template", "टेम्पलेट से शुरू करें"),
-                                    tr("View all", "सभी देखें"),
-                                ) {
-                                    tab = "templates"
+                            if (search.isBlank())
+                                insetItem(key = "home-create", contentType = "create") {
+                                    HomeCreateActions(
+                                        importing = importing,
+                                        onCreate = { model.create { screen = "editor" } },
+                                        onImport = { anyPicker.launch(ImportFormat.allMimeTypes) },
+                                        onGallery = openImage,
+                                        onMerge = { openTool { mergePicker.launch(ImportFormat.PDF.mimeTypes) } },
+                                        onRemove = { openTool { requestedPageTool = PdfPageTool.Remove; openPdf() } },
+                                        onCompress = { openTool { compressPicker.launch(ImportFormat.PDF.mimeTypes) } },
+                                        onSplit = { openTool { requestedPageTool = PdfPageTool.Split; openPdf() } },
+                                    )
                                 }
-                            }
-                            item {
-                                LazyRow(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    contentPadding = PaddingValues(horizontal = 20.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                ) {
-                                    items(Templates.all.take(4), key = { it.id }) { template ->
-                                        TemplateCard(template, Modifier.width(152.dp)) {
-                                            selectedTemplate = template.id
-                                        }
+                            val homeDocs = if (search.isBlank()) libraryDocs.take(4) else visible
+                            val homePdfs =
+                                importedPdfs
+                                    .filter { it.title.contains(search, true) }
+                                    .let { if (search.isBlank()) it.take(3) else it }
+                            if (search.isBlank())
+                                insetItem(key = "home-recent", contentType = "recent") {
+                                    HomeRecentGroup(
+                                        homeDocs,
+                                        afterThirdDocument = {
+                                            if (!importing && !exporting) AdBanner(ads, language = p.language, inline = true)
+                                        },
+                                        onOpen = { doc ->
+                                            model.open(doc.id) { screen = "editor" }
+                                        },
+                                        onPdf = { doc ->
+                                            model.open(doc.id) {
+                                                if (model.export()) {
+                                                    pdfAction = null
+                                                    pdfReturnScreen = "main"
+                                                    awaitingPdf = true
+                                                }
+                                            }
+                                        },
+                                        onShare = { doc ->
+                                            model.open(doc.id) {
+                                                if (model.export()) {
+                                                    pdfAction = "share"
+                                                    pdfReturnScreen = "main"
+                                                    awaitingPdf = true
+                                                }
+                                            }
+                                        },
+                                        onRename = { rename = it },
+                                        onDuplicate = model::duplicate,
+                                        onDelete = { delete = it },
+                                        onViewAll = { tab = "documents" },
+                                    )
+                                }
+                            if (search.isNotBlank()) {
+                                insetItem {
+                                    SectionHeading(
+                                        tr("Search results", "खोज के नतीजे"),
+                                        tr("View all", "सभी देखें"),
+                                    ) {
+                                        tab = "documents"
                                     }
                                 }
-                            }
-                            insetItem {
-                                SectionHeading(
-                                    tr("Recent documents", "हाल के दस्तावेज़"),
-                                    tr("View all", "सभी देखें"),
-                                ) {
-                                    tab = "documents"
+                                if (homeDocs.isEmpty() && homePdfs.isEmpty())
+                                    insetItem { EmptyState(true) }
+                                items(homeDocs, key = { it.id }) { doc ->
+                                    DocumentCard(
+                                        doc,
+                                        { model.open(doc.id) { screen = "editor" } },
+                                        {
+                                            model.open(doc.id) {
+                                                if (model.export()) {
+                                                    pdfAction = "share"
+                                                    pdfReturnScreen = "main"
+                                                    awaitingPdf = true
+                                                }
+                                            }
+                                        },
+                                        { rename = doc },
+                                        { model.duplicate(doc) },
+                                        { delete = doc },
+                                        Modifier.padding(horizontal = 20.dp),
+                                    )
                                 }
                             }
-                            if (docs.isEmpty()) insetItem { EmptyState(false) }
-                            items(docs.take(6), key = { it.id }) { doc ->
-                                DocumentCard(
-                                    doc,
-                                    { model.open(doc.id) { screen = "editor" } },
-                                    {
-                                        model.open(doc.id) {
-                                            if (model.export()) {
+                            if (homePdfs.isNotEmpty()) {
+                                insetItem {
+                                    SectionHeading(
+                                        tr("Saved PDFs", "सेव की गई PDF"),
+                                        tr("View all", "सभी देखें"),
+                                    ) {
+                                        tab = "documents"
+                                    }
+                                }
+                                items(homePdfs, key = { "pdf-${it.id}" }) { entry ->
+                                    ImportedPdfCard(
+                                        entry,
+                                        Modifier.padding(horizontal = 20.dp),
+                                        onOpen = {
+                                            model.openImportedPdf(entry) {
+                                                pdfAction = null
                                                 pdfReturnScreen = "main"
-                                                awaitingPdf = true
+                                                screen = "pdf"
                                             }
-                                        }
-                                    },
-                                    { rename = doc },
-                                    { model.duplicate(doc) },
-                                    { delete = doc },
-                                    modifier = Modifier.padding(horizontal = 20.dp),
-                                )
+                                        },
+                                        onShare = {
+                                            model.openImportedPdf(entry) {
+                                                pdfAction = "share"
+                                                pdfReturnScreen = "main"
+                                                screen = "pdf"
+                                            }
+                                        },
+                                        onRename = { model.renameImportedPdf(entry, it) },
+                                        onDuplicate = { model.duplicateImportedPdf(entry) },
+                                        onDelete = { model.deleteImportedPdf(entry) },
+                                    )
+                                }
                             }
+                            if (search.isBlank())
+                                insetItem(key = "home-templates", contentType = "templates") {
+                                    HomeTemplateShelf(
+                                        { model.create { screen = "editor" } },
+                                        { selectedTemplate = it.id },
+                                        { tab = "templates" },
+                                    )
+                                }
                         }
                         if (tab == "templates") {
                             val filteredTemplates =
@@ -281,178 +808,195 @@ fun LekhakApp(model: MainViewModel) {
                                 }
                             }
                         }
-                        if (tab == "documents") {
-                            item {
-                                Text(
-                                    tr("Your writing, together.", "आपके सभी दस्तावेज़।"),
-                                    style = MaterialTheme.typography.headlineMedium,
-                                    fontWeight = FontWeight.Bold,
-                                )
-                            }
-                            item { SearchBox(search, { search = it }) }
-                            item {
-                                Row(
-                                    Modifier.horizontalScroll(rememberScrollState()),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                ) {
-                                    listOf(
-                                            "modified" to tr("Last edited", "हाल में बदले"),
-                                            "created" to tr("Newest", "नवीनतम"),
-                                            "name" to tr("Title", "शीर्षक"),
-                                        )
-                                        .forEach { (key, label) ->
-                                            FilterChip(
-                                                sort == key,
-                                                { sort = key },
-                                                label = { Text(label) },
-                                            )
-                                        }
-                                }
-                            }
-                            if (visible.isEmpty()) item { EmptyState(search.isNotEmpty()) }
-                            items(visible, key = { it.id }) { doc ->
-                                DocumentCard(
-                                    doc,
-                                    { model.open(doc.id) { screen = "editor" } },
-                                    {
-                                        model.open(doc.id) {
-                                            if (model.export()) {
-                                                pdfReturnScreen = "main"
-                                                awaitingPdf = true
-                                            }
-                                        }
-                                    },
-                                    { rename = doc },
-                                    { model.duplicate(doc) },
-                                    { delete = doc },
-                                )
-                            }
-                        }
                         if (tab == "settings") {
+                            item { SettingsWelcome() }
                             item {
-                                Text(
-                                    tr("Make yourself at home.", "अपनी पसंद की सेटिंग।"),
-                                    style = MaterialTheme.typography.headlineMedium,
-                                    fontWeight = FontWeight.Bold,
-                                )
-                            }
-                            item {
-                                SettingsCard(tr("App language", "ऐप की भाषा")) {
-                                    ChoiceRow(
-                                        listOf("en" to "English", "hi" to "हिंदी"),
-                                        p.language,
-                                    ) {
-                                        model.preferences(p.copy(language = it))
+                                SettingsCard(tr("Preferences", "पसंद")) {
+                                    CompactSettingsRow(Icons.Outlined.Language, tr("App language", "ऐप की भाषा")) {
+                                        SettingsChoices(
+                                            listOf("en" to "English", "hi" to "हिंदी"),
+                                            p.language,
+                                            onSelect = { model.preferences(p.copy(language = it)) },
+                                        )
                                     }
-                                }
-                            }
-                            item {
-                                SettingsCard(tr("Appearance", "थीम")) {
-                                    ChoiceRow(
-                                        listOf(
-                                            "system" to tr("System", "सिस्टम"),
-                                            "light" to tr("Light", "लाइट"),
-                                            "dark" to tr("Dark", "डार्क"),
-                                        ),
-                                        p.theme,
-                                    ) {
-                                        model.preferences(p.copy(theme = it))
+                                    HorizontalDivider(color = AppTheme.colors.line)
+                                    CompactSettingsRow(Icons.Outlined.Palette, tr("Appearance", "थीम")) {
+                                        SettingsChoices(
+                                            listOf(
+                                                "system" to tr("System", "सिस्टम"),
+                                                "light" to tr("Light", "लाइट"),
+                                                "dark" to tr("Dark", "डार्क"),
+                                            ),
+                                            p.theme,
+                                            icons = listOf(Icons.Outlined.PhoneAndroid, Icons.Outlined.LightMode, Icons.Outlined.DarkMode),
+                                            onSelect = { model.preferences(p.copy(theme = it)) },
+                                        )
                                     }
+                                    HorizontalDivider(color = AppTheme.colors.line)
+                                    CompactSettingsRow(
+                                        Icons.Outlined.DocumentScanner,
+                                        tr("Scanner settings", "स्कैनर सेटिंग्स"),
+                                        onClick = { screen = "scanner" },
+                                    )
                                 }
                             }
                             item {
                                 SettingsCard(tr("Documents", "दस्तावेज़")) {
-                                    Text(
-                                        tr("Paper: A4 · 210 × 297 mm", "कागज़: A4 · 210 × 297 मिमी")
+                                    CompactSettingsRow(
+                                        Icons.Outlined.Straighten,
+                                        tr("Page setup", "पेज सेटअप"),
+                                        "A4 · ${p.defaults.fontFamily} · ${p.defaults.fontSize} pt · ${p.defaults.lineHeight}×",
+                                        onClick = { defaultsSetup = true },
                                     )
-                                    Text(
-                                        "${p.defaults.fontFamily} · ${p.defaults.fontSize} pt · ${p.defaults.lineHeight}×",
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                    TextButton(onClick = { defaultsSetup = true }) {
-                                        Text(
-                                            tr(
-                                                "Default margins & typography",
-                                                "डिफ़ॉल्ट मार्जिन और फ़ॉन्ट",
-                                            )
-                                        )
-                                    }
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Column(Modifier.weight(1f)) {
-                                            Text(tr("Autosave", "अपने आप सहेजें"))
-                                            Text(
-                                                tr(
-                                                    "Draft recovery stays on even with autosave off.",
-                                                    "ऑटोसहेज बंद होने पर भी ड्राफ़्ट सुरक्षित रहता है।",
-                                                ),
-                                                style = MaterialTheme.typography.bodySmall,
-                                            )
-                                        }
+                                    HorizontalDivider(color = AppTheme.colors.line)
+                                    CompactSettingsRow(
+                                        Icons.Outlined.Save,
+                                        tr("Autosave", "अपने आप सहेजें"),
+                                        tr("Draft recovery is always on", "ड्राफ़्ट रिकवरी हमेशा चालू रहती है"),
+                                    ) {
                                         Switch(
-                                            p.autosave,
-                                            { model.preferences(p.copy(autosave = it)) },
+                                            checked = p.autosave,
+                                            onCheckedChange = { model.preferences(p.copy(autosave = it)) },
+                                            colors = SwitchDefaults.colors(
+                                                checkedTrackColor = AppTheme.colors.accent,
+                                                checkedThumbColor = AppTheme.colors.onAccent,
+                                            ),
                                         )
                                     }
-                                    TextButton(onClick = { tab = "documents" }) {
-                                        Text(tr("Manage documents", "दस्तावेज़ प्रबंधन"))
+                                    HorizontalDivider(color = AppTheme.colors.line)
+                                    CompactSettingsRow(
+                                        Icons.Outlined.OpenInNew,
+                                        tr("Make default app", "डिफ़ॉल्ट ऐप बनाएँ"),
+                                        tr("Open PDFs and Office files with this app", "इस ऐप में PDF और Office फ़ाइलें खोलें"),
+                                        onClick = { defaultViewerHelp = true },
+                                    )
+                                    HorizontalDivider(color = AppTheme.colors.line)
+                                    CompactSettingsRow(
+                                        Icons.Outlined.FolderOpen,
+                                        tr("Manage documents", "दस्तावेज़ प्रबंधन"),
+                                        onClick = { search = ""; tab = "documents" },
+                                    )
+                                    if (pdf != null) {
+                                        HorizontalDivider(color = AppTheme.colors.line)
+                                        CompactSettingsRow(
+                                            Icons.Outlined.PictureAsPdf,
+                                            tr("Open latest exported PDF", "आखिरी निर्यात किया PDF खोलें"),
+                                            onClick = { screen = "pdf" },
+                                        )
                                     }
                                 }
                             }
                             item {
-                                SettingsCard(
-                                    tr("About A4 Paper Typing", "A4 Paper Typing के बारे में")
-                                ) {
-                                    TextButton(onClick = { info = "privacy" }) {
-                                        Text(tr("Privacy policy", "गोपनीयता नीति"))
-                                    }
-                                    TextButton(
+                                SettingsCard(tr("About", "ऐप के बारे में")) {
+                                    CompactSettingsRow(
+                                        Icons.Outlined.Shield,
+                                        tr("Privacy policy", "गोपनीयता नीति"),
+                                        onClick = { info = "privacy" },
+                                    )
+                                    HorizontalDivider(color = AppTheme.colors.line)
+                                    CompactSettingsRow(
+                                        Icons.Outlined.Support,
+                                        tr("Contact support", "सहायता से संपर्क करें"),
                                         onClick = {
+                                            val intent = android.content.Intent(
+                                                android.content.Intent.ACTION_SENDTO,
+                                                android.net.Uri.fromParts("mailto", "AMAKUNAR.IN@GMAIL.COM", null),
+                                            ).putExtra(android.content.Intent.EXTRA_SUBJECT, "A4 Paper Typing support")
                                             try {
-                                                context.startActivity(
-                                                    android.content
-                                                        .Intent(
-                                                            android.content.Intent.ACTION_SENDTO,
-                                                            android.net.Uri.fromParts(
-                                                                "mailto",
-                                                                "AMAKUNAR.IN@GMAIL.COM",
-                                                                null,
-                                                            ),
-                                                        )
-                                                        .putExtra(
-                                                            android.content.Intent.EXTRA_SUBJECT,
-                                                            "A4 Paper Typing support",
-                                                        )
-                                                )
+                                                context.startActivity(intent)
                                             } catch (_: android.content.ActivityNotFoundException) {
                                                 model.error.value = "Email: AMAKUNAR.IN@GMAIL.COM"
                                             }
-                                        }
-                                    ) {
-                                        Text(tr("Contact support", "सहायता से संपर्क करें"))
-                                    }
-                                    TextButton(onClick = { info = "about" }) {
+                                        },
+                                    )
+                                    HorizontalDivider(color = AppTheme.colors.line)
+                                    CompactSettingsRow(
+                                        Icons.Outlined.Article,
+                                        tr("App info and licenses", "ऐप जानकारी और लाइसेंस"),
+                                        onClick = { info = "about" },
+                                    )
+                                }
+                            }
+                            if (BuildConfig.ADS_ENABLED) item {
+                                SettingsCard(tr("Advertising", "विज्ञापन")) {
+                                    Column(Modifier.padding(14.dp)) {
                                         Text(
-                                            tr(
-                                                "App information & licenses",
-                                                "ऐप जानकारी और लाइसेंस",
-                                            )
+                                            if (BuildConfig.ADS_DEMO_MODE)
+                                                tr(
+                                                    "Test ads only · no earnings",
+                                                    "केवल टेस्ट विज्ञापन · कमाई नहीं",
+                                                )
+                                            else
+                                                tr(
+                                                    "Supported by advertising",
+                                                    "विज्ञापनों से समर्थित",
+                                                ),
+                                            style = MaterialTheme.typography.bodySmall,
                                         )
-                                    }
-                                    if (pdf != null)
-                                        TextButton(onClick = { screen = "pdf" }) {
+                                        if (adsState.privacyOptionsRequired) {
+                                            TextButton(
+                                                enabled = !adsState.busy,
+                                                onClick = {
+                                                    (context as? android.app.Activity)?.let(
+                                                        ads::showPrivacyOptions
+                                                    )
+                                                },
+                                            ) {
+                                                Text(
+                                                    tr(
+                                                        "Ad privacy choices",
+                                                        "विज्ञापन गोपनीयता विकल्प",
+                                                    )
+                                                )
+                                            }
+                                        }
+                                        if (adsState.error != null) {
                                             Text(
                                                 tr(
-                                                    "Open latest exported PDF",
-                                                    "आखिरी निर्यात किया PDF खोलें",
-                                                )
+                                                    "Ads are unavailable. You can keep using all document tools.",
+                                                    "विज्ञापन उपलब्ध नहीं हैं। दस्तावेज़ के सभी टूल इस्तेमाल कर सकते हैं।",
+                                                ),
+                                                style = MaterialTheme.typography.bodySmall,
                                             )
+                                            TextButton(
+                                                enabled = !adsState.busy,
+                                                onClick = {
+                                                    (context as? android.app.Activity)?.let(
+                                                        ads::start
+                                                    )
+                                                },
+                                            ) {
+                                                Text(
+                                                    tr("Retry ad setup", "विज्ञापन सेटअप फिर करें")
+                                                )
+                                            }
                                         }
+                                    }
                                 }
                             }
                         }
                     }
                 }
             }
+            }
+            if (homeUpdates)
+                AlertDialog(
+                    onDismissRequest = { homeUpdates = false },
+                    title = { Text(tr("App updates", "ऐप अपडेट")) },
+                    text = {
+                        Text(
+                            tr(
+                                "Your new Home brings writing, Word import, recent documents and templates together. PDF, spreadsheet and image import will be added in a later update.",
+                                "नए Home पर लिखना, Word फ़ाइल खोलना, हाल के दस्तावेज़ और टेम्पलेट एक साथ हैं। PDF, spreadsheet और image import आने वाले अपडेट में जुड़ेंगे।",
+                            )
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { homeUpdates = false }) {
+                            Text(tr("Got it", "ठीक है"))
+                        }
+                    },
+                )
             if (searchPopup) {
                 SearchPopup(
                     docs = docs,
@@ -465,6 +1009,7 @@ fun LekhakApp(model: MainViewModel) {
                         searchPopup = false
                         model.open(doc.id) {
                             if (model.export()) {
+                                pdfAction = "share"
                                 pdfReturnScreen = "main"
                                 awaitingPdf = true
                             }
@@ -479,16 +1024,20 @@ fun LekhakApp(model: MainViewModel) {
                     },
                 )
             }
-            if (pageSetup && current != null)
-                PageSetupDialog(current!!.page, onDismiss = { pageSetup = false }) {
-                    model.page(it)
-                    pageSetup = false
+            if (pageSetup || defaultsSetup) {
+                A4Theme(darkTheme = AppTheme.colors == DarkColors) {
+                    if (pageSetup && current != null)
+                        PageSetupDialog(current!!.page, onDismiss = { pageSetup = false }) {
+                            model.page(it)
+                            pageSetup = false
+                        }
+                    if (defaultsSetup)
+                        PageSetupDialog(p.defaults, onDismiss = { defaultsSetup = false }) {
+                            model.preferences(p.copy(defaults = it))
+                            defaultsSetup = false
+                        }
                 }
-            if (defaultsSetup)
-                PageSetupDialog(p.defaults, onDismiss = { defaultsSetup = false }) {
-                    model.preferences(p.copy(defaults = it))
-                    defaultsSetup = false
-                }
+            }
             rename?.let { doc ->
                 var value by remember(doc.id) { mutableStateOf(doc.title) }
                 AlertDialog(
@@ -532,7 +1081,22 @@ fun LekhakApp(model: MainViewModel) {
                     confirmButton = {
                         TextButton(
                             onClick = {
-                                model.delete(doc)
+                                if (screen == "editor" && current?.id == doc.id) {
+                                    screen = "main"
+                                    editorReview = false
+                                }
+                                if (tab == "documents" && screen == "main" && doc.id !in pendingLibraryDeletes) {
+                                    pendingLibraryDeletes.add(doc.id)
+                                    libraryScope.launch {
+                                        val result = librarySnackbar.showSnackbar(
+                                            removedMessage, undoLabel, duration = SnackbarDuration.Long,
+                                        )
+                                        if (result != SnackbarResult.ActionPerformed) model.delete(doc)
+                                        pendingLibraryDeletes.remove(doc.id)
+                                    }
+                                } else {
+                                    model.delete(doc)
+                                }
                                 delete = null
                             }
                         ) {
@@ -570,6 +1134,91 @@ fun LekhakApp(model: MainViewModel) {
                         }
                     },
                 )
+            if (mergeFiles.isNotEmpty()) {
+                PdfMergeDialog(
+                    files = mergeFiles,
+                    onOrder = { mergeFiles = ArrayList(it) },
+                    onDismiss = { mergeFiles = arrayListOf() },
+                    onMerge = {
+                        val files = mergeFiles.toList()
+                        mergeFiles = arrayListOf()
+                        model.mergePdfs(files) {
+                            pdfAction = null
+                            pdfReturnScreen = "pdfTools"
+                            screen = "pdf"
+                        }
+                    },
+                )
+            }
+            pdfPagesDialog?.let { entry ->
+                PdfPagesDialog(entry, tool = activePageTool, onDismiss = { pdfPagesDialog = null }) { ranges, rotation ->
+                    pdfPagesDialog = null
+                    model.copyPdfPages(entry, ranges, rotation) {
+                        pdfAction = null
+                        if (pdfReturnScreen != "pdfTools") pdfReturnScreen = "main"
+                        screen = "pdf"
+                    }
+                }
+            }
+            if (importing)
+                AlertDialog(
+                    onDismissRequest = {},
+                    title = { Text(tr("Opening $importLabel", "$importLabel खुल रहा है")) },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                            LinearProgressIndicator(Modifier.fillMaxWidth())
+                            Text(
+                                tr(
+                                    "Processing the selected file on your device…",
+                                    "चुनी हुई फ़ाइल आपके फोन पर पढ़ी जा रही है…",
+                                )
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = model::cancelImport) {
+                            Text(tr("Cancel", "रद्द करें"))
+                        }
+                    },
+                    properties =
+                        androidx.compose.ui.window.DialogProperties(
+                            dismissOnBackPress = false,
+                            dismissOnClickOutside = false,
+                        ),
+                )
+            importNotice?.let { notices ->
+                AlertDialog(
+                    onDismissRequest = { model.importNotice.value = null },
+                    title = { Text(tr("Editable copy ready", "संपादन के लिए कॉपी तैयार है")) },
+                    text = {
+                        Column(
+                            Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Text(
+                                tr(
+                                    "Your original file is unchanged. You can edit this copy, then save or share it as PDF.",
+                                    "मूल फ़ाइल नहीं बदली है। इस कॉपी को संपादित करके PDF में सेव या शेयर कर सकते हैं।",
+                                )
+                            )
+                            Text(
+                                tr(
+                                    "Check the page preview before exporting. Imported fonts, spacing and page breaks can differ from the original.",
+                                    "PDF बनाने से पहले पेज का पूर्वावलोकन देखें। फ़ॉन्ट, दूरी और पेज मूल फ़ाइल से अलग हो सकते हैं।",
+                                )
+                            )
+                            notices.forEach {
+                                Text("• $it", style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { model.importNotice.value = null }) {
+                            Text(tr("Continue", "आगे बढ़ें"))
+                        }
+                    },
+                )
+            }
             error?.let { message ->
                 AlertDialog(
                     onDismissRequest = { model.error.value = null },
@@ -584,6 +1233,51 @@ fun LekhakApp(model: MainViewModel) {
                         ) {
                             Text(tr("OK", "ठीक है"))
                         }
+                    },
+                )
+            }
+            if (defaultViewerPrompt && !importing && importNotice == null) {
+                AlertDialog(
+                    onDismissRequest = { defaultViewerPrompt = false },
+                    title = { Text(tr("Open files here by default?", "फ़ाइलें हमेशा इस ऐप में खोलें?")) },
+                    text = { Text(tr(
+                        "You can choose A4 Paper Typing in Android for supported file types.",
+                        "समर्थित फ़ाइलों के लिए Android में A4 Paper Typing चुन सकते हैं।",
+                    )) },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            defaultViewerPrompt = false
+                            defaultViewerHelp = true
+                        }) { Text(tr("How to set it", "सेट करने का तरीका")) }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { defaultViewerPrompt = false }) {
+                            Text(tr("Not now", "अभी नहीं"))
+                        }
+                    },
+                )
+            }
+            if (defaultViewerHelp) {
+                AlertDialog(
+                    onDismissRequest = { defaultViewerHelp = false },
+                    title = { Text(tr("Make default app", "डिफ़ॉल्ट ऐप बनाएँ")) },
+                    text = {
+                        Text(tr(
+                            "In Files, open a PDF, DOCX, XLSX, XLS or CSV. In Open with, choose A4 Paper Typing and tap Always if Android offers it. Repeat for each file type. If another app opens directly, clear its defaults in Android Settings first.",
+                            "Files में PDF, DOCX, XLSX, XLS या CSV खोलें। Open with में A4 Paper Typing चुनें और अगर Always दिखे तो उसे दबाएँ। हर फ़ाइल प्रकार के लिए यही करें। अगर कोई दूसरा ऐप सीधे खुलता है, तो Android Settings में पहले उसके defaults हटाएँ।",
+                        ))
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            val intent = android.content.Intent(android.provider.Settings.ACTION_APPLICATION_SETTINGS)
+                            runCatching { context.startActivity(intent) }.onFailure {
+                                model.error.value = "Open Android Settings and choose Apps."
+                            }
+                            defaultViewerHelp = false
+                        }) { Text(tr("Open app settings", "ऐप सेटिंग्स खोलें")) }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { defaultViewerHelp = false }) { Text(tr("Close", "बंद करें")) }
                     },
                 )
             }
@@ -605,13 +1299,13 @@ fun LekhakApp(model: MainViewModel) {
                             text =
                                 if (kind == "privacy")
                                     tr(
-                                        "A4 Paper Typing — AMAN KUMAR\nUpdated 10 October 2026\nContact: AMAKUNAR.IN@GMAIL.COM\n\nDocuments, selected photos and PDFs are processed on this device. No account, analytics, ads or document uploads. The app requests no Internet permission.\n\nPhoto Picker grants access only to images you choose. A private resized copy is stored; image metadata is removed. Notification permission is optional and shows PDF export progress.\n\nFiles leave the app when you choose Save as, Share or Print. The selected app, cloud provider or printer handles that copy under its own policy. We do not receive your documents.\n\nDelete documents within the app. Unused images can be removed after a 24-hour grace period at a later startup. Each document’s latest private PDF is retained; earlier PDFs can be removed after seven days. Clearing app storage or uninstalling removes private files. Copies saved elsewhere must be deleted there. Save important PDFs outside the app before uninstalling.\n\nIf you email support, your email address and message are handled to answer your request. Do not send sensitive documents unless necessary; contact us to request deletion of support correspondence. We do not sell your information.",
-                                        "A4 Paper Typing — AMAN KUMAR\nअपडेट: 10 अक्टूबर 2026\nसंपर्क: AMAKUNAR.IN@GMAIL.COM\n\nदस्तावेज़, चुनी हुई तस्वीरें और PDF इसी डिवाइस पर बनते हैं। लॉगिन, विज्ञापन, एनालिटिक्स या दस्तावेज़ अपलोड नहीं हैं। ऐप इंटरनेट अनुमति नहीं माँगता।\n\nPhoto Picker से केवल आपकी चुनी हुई तस्वीर की निजी कॉपी बनती है; तस्वीर का मेटाडेटा हटाया जाता है। PDF की प्रगति दिखाने की notification अनुमति वैकल्पिक है।\n\nSave as, Share या Print करने पर चुना हुआ ऐप, क्लाउड प्रदाता या प्रिंटर आपकी कॉपी संभालता है। हमें दस्तावेज़ प्राप्त नहीं होते।\n\nदस्तावेज़ ऐप में हटा सकते हैं। अनुपयोगी तस्वीरें 24 घंटे बाद अगले startup पर साफ हो सकती हैं। हर दस्तावेज़ की नई PDF रहती है; पुराने versions सात दिन बाद साफ हो सकते हैं। ऐप का डेटा साफ करने या uninstall करने पर निजी फ़ाइलें मिटती हैं। बाहर सहेजी कॉपी वहीं से हटाएँ।\n\nसहायता के लिए email करने पर आपका पता और संदेश जवाब देने के लिए उपयोग होते हैं। ज़रूरत के बिना संवेदनशील दस्तावेज़ न भेजें। सहायता-संदेश हटवाने के लिए हमसे संपर्क करें। आपकी जानकारी बेची नहीं जाती।",
+                                        "A4 Paper Typing — AMAN KUMAR\nUpdated 2 November 2026\nContact: AMAKUNAR.IN@GMAIL.COM\n\nDocuments, selected photos and PDFs are processed on this device. No account is required and we do not upload your documents to our servers. Document editing and PDF export work offline. Ads and privacy messages use the Internet. Google AdMob serves ads, with Meta Audience Network available through mediation when configured. Ad SDKs may collect IP-derived approximate location, device/advertising identifiers, app/ad interactions and diagnostics for advertising, measurement and fraud prevention. Document text, filenames, photos and PDF content are not attached to ad requests. Ad privacy choices are available in Settings where required. Test builds use Google demo ad units and do not earn revenue. Provider policies: https://policies.google.com/privacy and https://www.facebook.com/privacy/policy/. PDF scanning uses Google Play services / ML Kit: initial components may be downloaded, and Google components may process technical usage, device and diagnostic data under Google terms. Scan images and results are processed on-device. We do not receive them.\n\nPhoto Picker grants access only to images you choose. A private resized copy is stored; image metadata is removed. Notification permission is optional and shows PDF export progress.\n\nFiles leave the app when you choose Save as, Share or Print. The selected app, cloud provider or printer handles that copy under its own policy. We do not receive your documents.\n\nScanned PDFs are saved as private copies and can be deleted from Documents. Delete documents within the app. Unused images can be removed after a 24-hour grace period at a later startup. Each document’s latest private PDF is retained; earlier PDFs can be removed after seven days. Clearing app storage or uninstalling removes private files. Copies saved elsewhere must be deleted there. Save important PDFs outside the app before uninstalling.\n\nIf you email support, your email address and message are handled to answer your request. Do not send sensitive documents unless necessary; contact us to request deletion of support correspondence. Advertising providers handle SDK data under their own policies and your applicable privacy choices.",
+                                        "A4 Paper Typing — AMAN KUMAR\nअपडेट: 2 नवंबर 2026\nसंपर्क: AMAKUNAR.IN@GMAIL.COM\n\nदस्तावेज़, चुनी हुई तस्वीरें और PDF इसी डिवाइस पर बनते हैं। लॉगिन की ज़रूरत नहीं है और आपके दस्तावेज़ हमारे सर्वर पर अपलोड नहीं होते। दस्तावेज़ संपादन और PDF बनाना ऑफ़लाइन काम करते हैं। विज्ञापन और गोपनीयता संदेश इंटरनेट का उपयोग करते हैं। विज्ञापन Google AdMob से आते हैं; setup होने पर Meta Audience Network भी mediation के ज़रिए विज्ञापन दे सकता है। ये SDK विज्ञापन, माप और धोखाधड़ी रोकने के लिए IP से अनुमानित स्थान, डिवाइस/विज्ञापन पहचान, ऐप/विज्ञापन interactions और diagnostics संभाल सकते हैं। दस्तावेज़ का टेक्स्ट, फ़ाइल नाम, तस्वीर या PDF content विज्ञापन अनुरोध में नहीं भेजा जाता। जहाँ ज़रूरी हो, Settings में विज्ञापन गोपनीयता विकल्प उपलब्ध हैं। टेस्ट बिल्ड में Google demo विज्ञापन हैं; उनसे कमाई नहीं होती। प्रदाता नीतियाँ: https://policies.google.com/privacy और https://www.facebook.com/privacy/policy/. PDF स्कैन के लिए Google Play services / ML Kit का उपयोग होता है। पहली बार components डाउनलोड हो सकते हैं; Google अपने नियमों के अनुसार तकनीकी उपयोग, डिवाइस और diagnostics data संभाल सकता है। स्कैन की तस्वीरें और परिणाम फोन पर process होते हैं; हमें नहीं मिलते।\n\nPhoto Picker से केवल आपकी चुनी हुई तस्वीर की निजी कॉपी बनती है; तस्वीर का मेटाडेटा हटाया जाता है। PDF की प्रगति दिखाने की notification अनुमति वैकल्पिक है।\n\nSave as, Share या Print करने पर चुना हुआ ऐप, क्लाउड प्रदाता या प्रिंटर आपकी कॉपी संभालता है। हमें दस्तावेज़ प्राप्त नहीं होते।\n\nदस्तावेज़ ऐप में हटा सकते हैं। अनुपयोगी तस्वीरें 24 घंटे बाद अगले startup पर साफ हो सकती हैं। हर दस्तावेज़ की नई PDF रहती है; पुराने versions सात दिन बाद साफ हो सकते हैं। ऐप का डेटा साफ करने या uninstall करने पर निजी फ़ाइलें मिटती हैं। बाहर सहेजी कॉपी वहीं से हटाएँ।\n\nसहायता के लिए email करने पर आपका पता और संदेश जवाब देने के लिए उपयोग होते हैं। ज़रूरत के बिना संवेदनशील दस्तावेज़ न भेजें। सहायता-संदेश हटवाने के लिए हमसे संपर्क करें। विज्ञापन प्रदाता SDK data को अपनी नीतियों और लागू गोपनीयता विकल्पों के अनुसार संभालते हैं।",
                                     )
                                 else
                                     tr(
-                                        "Offline document maker • No watermark\n\nBuilt with Android Jetpack, Tiptap / ProseMirror (MIT) and Noto fonts (SIL OFL). Third-party license texts are bundled in assets/licenses.\n\nPDF fidelity depends on the installed Android System WebView. Inspect the actual PDF preview before printing. Templates are editable drafts, not certifications.",
-                                        "ऑफ़लाइन दस्तावेज़ निर्माता • कोई वॉटरमार्क नहीं\n\nAndroid Jetpack, Tiptap / ProseMirror (MIT) और Noto (SIL OFL) का उपयोग करता है।\n\nप्रिंट करने से पहले असली PDF प्रीव्यू जाँचें। टेम्पलेट संपादन योग्य ड्राफ़्ट हैं, प्रमाणपत्र नहीं।",
+                                        "Offline document tools • Ad-supported • No watermark\n\nBuilt with Android Jetpack, Tiptap / ProseMirror (MIT), Noto fonts (SIL OFL), PDFBox, JExcelAPI, Google ML Kit Document Scanner, Google Mobile Ads / UMP and Meta Audience Network. Third-party license texts and provider notices are bundled in assets/licenses.\n\nPDF fidelity depends on the installed Android System WebView. Inspect the actual PDF preview before printing. Templates are editable drafts, not certifications.",
+                                        "ऑफ़लाइन दस्तावेज़ टूल • विज्ञापन समर्थित • कोई वॉटरमार्क नहीं\n\nAndroid Jetpack, Tiptap / ProseMirror (MIT) और Noto (SIL OFL) का उपयोग करता है।\n\nप्रिंट करने से पहले असली PDF प्रीव्यू जाँचें। टेम्पलेट संपादन योग्य ड्राफ़्ट हैं, प्रमाणपत्र नहीं।",
                                     ),
                         )
                     },
@@ -625,115 +1319,129 @@ fun LekhakApp(model: MainViewModel) {
 }
 
 @Composable
-private fun Onboarding(onStart: () -> Unit) {
-    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        Column(
-            Modifier.fillMaxSize().safeDrawingPadding().padding(28.dp),
-            verticalArrangement = Arrangement.Center,
-        ) {
-            Surface(shape = MaterialTheme.shapes.large, color = Blue) {
-                Icon(
-                    Icons.Rounded.Description,
-                    null,
-                    tint = Color.White,
-                    modifier = Modifier.padding(24.dp).size(56.dp),
-                )
-            }
-            Spacer(Modifier.height(32.dp))
+private fun WordImportButton(busy: Boolean, onClick: () -> Unit) {
+    FluentOutlinedButton(onClick = onClick, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
+        Icon(Icons.Rounded.FileOpen, null)
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f).padding(vertical = 6.dp)) {
+            Text(tr("Import a document", "दस्तावेज़ खोलें"), fontWeight = FontWeight.SemiBold)
             Text(
-                "A4 Paper Typing",
-                style = MaterialTheme.typography.displaySmall,
-                fontWeight = FontWeight.Bold,
+                tr("Word • Excel • PDF", "Word • Excel • PDF"),
+                style = MaterialTheme.typography.bodySmall,
             )
-            Spacer(Modifier.height(12.dp))
-            Text(
-                tr("From a thought\nto a finished page.", "विचार से\nतैयार दस्तावेज़ तक।"),
-                style = MaterialTheme.typography.headlineMedium,
-            )
-            Spacer(Modifier.height(20.dp))
-            Text(
-                tr(
-                    "Write in Hindi and English. Start with a template. Create clean A4 PDFs, entirely on your device.",
-                    "हिंदी और अंग्रेज़ी में लिखें। टेम्पलेट चुनें। इसी डिवाइस पर साफ़ A4 PDF बनाएँ।",
-                )
-            )
-            Spacer(Modifier.height(24.dp))
-            Text(
-                tr(
-                    "Offline • No account • No watermark",
-                    "ऑफ़लाइन • बिना खाते के • बिना वॉटरमार्क",
-                ),
-                color = MaterialTheme.colorScheme.tertiary,
-            )
-            Spacer(Modifier.height(40.dp))
-            FluentButton(onStart, Modifier.fillMaxWidth().height(54.dp)) {
-                Text(tr("Start writing", "लिखना शुरू करें"))
-            }
         }
     }
 }
 
 @Composable
-private fun HomeNavigation(tab: String, onSelect: (String) -> Unit) {
-    Surface(
-        modifier = Modifier.navigationBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp),
-        shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        shadowElevation = 2.dp,
-    ) {
-        NavigationBar(
-            containerColor = Color.Transparent,
-            tonalElevation = 0.dp,
-            windowInsets = WindowInsets(0, 0, 0, 0),
-        ) {
-            listOf(
-                    Triple("home", tr("Home", "होम"), Icons.Rounded.Home),
-                    Triple("templates", tr("Templates", "टेम्पलेट"), Icons.Rounded.Dashboard),
-                    Triple("documents", tr("Documents", "दस्तावेज़"), Icons.Rounded.FolderOpen),
-                    Triple("settings", tr("Settings", "सेटिंग"), Icons.Rounded.Settings),
-                )
-                .forEach { (key, label, icon) ->
-                    val selected = tab == key
-                    val scale by
-                        animateFloatAsState(
-                            if (selected) 1.12f else 1f,
-                            animationSpec = tween(200, easing = FastOutSlowInEasing),
-                            label = "Navigation icon",
-                        )
-                    NavigationBarItem(
-                        selected = selected,
-                        onClick = { onSelect(key) },
-                        icon = {
-                            Icon(
-                                icon,
-                                null,
-                                Modifier.graphicsLayer {
-                                    scaleX = scale
-                                    scaleY = scale
-                                },
-                            )
-                        },
-                        label = {
-                            Text(
-                                label,
-                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                            )
-                        },
-                        colors =
-                            NavigationBarItemDefaults.colors(
-                                indicatorColor = MaterialTheme.colorScheme.primaryContainer,
-                                selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                                selectedTextColor = MaterialTheme.colorScheme.primary,
-                            ),
-                    )
+private fun Onboarding(ads: AdsController, language: String, onStart: () -> Unit) {
+    val colors = AppTheme.colors
+    val entrance = remember { Animatable(0f) }
+    LaunchedEffect(Unit) { entrance.animateTo(1f, tween(260)) }
+    Surface(Modifier.fillMaxSize(), color = colors.bg) {
+        BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding()) {
+            val showBanner = maxHeight >= 600.dp
+            Column(Modifier.fillMaxSize()) {
+                if (showBanner) {
+                    AdBanner(ads, language = language, modifier = Modifier.padding(top = 12.dp, start = 16.dp, end = 16.dp))
                 }
+                Column(
+                    Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(24.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
+                ) {
+                    androidx.compose.foundation.Image(
+                        painter = androidx.compose.ui.res.painterResource(com.a4sizepaper.typing.texttopdf.R.drawable.ic_a4_splash),
+                        contentDescription = null,
+                        modifier = Modifier.size(112.dp).align(Alignment.CenterHorizontally).graphicsLayer {
+                            alpha = entrance.value
+                            translationY = 10.dp.toPx() * (1f - entrance.value)
+                        },
+                    )
+                    Text("A4 Paper Typing", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = colors.ink)
+                    Text(
+                        tr("Write, scan and make PDFs", "लिखें, स्कैन करें और PDF बनाएँ"),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = colors.accentText,
+                    )
+                    Surface(shape = RoundedCornerShape(24.dp), color = colors.surface, border = BorderStroke(1.dp, colors.line)) {
+                        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                            listOf(
+                                Icons.Rounded.Edit to tr("Type in your language with your phone’s keyboard", "अपने फ़ोन के कीबोर्ड से अपनी भाषा में लिखें"),
+                                Icons.Rounded.Description to tr("Start with a ready-made template", "तैयार टेम्पलेट से शुरू करें"),
+                                Icons.Rounded.PictureAsPdf to tr("Save and share A4 PDFs", "A4 PDF सहेजें और शेयर करें"),
+                            ).forEach { (icon, label) ->
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    Icon(icon, null, Modifier.size(22.dp), tint = colors.accentText)
+                                    Text(label, style = MaterialTheme.typography.bodyMedium, color = colors.ink)
+                                }
+                            }
+                        }
+                    }
+                }
+                Button(
+                    onClick = onStart,
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp).fillMaxWidth().heightIn(min = 52.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.accent, contentColor = colors.onAccent),
+                ) { Text(tr("Get started", "शुरू करें"), fontWeight = FontWeight.SemiBold) }
+            }
         }
     }
 }
 
 @Composable
-private fun PreviewCursor() {
+internal fun HomeNavigation(tab: String, onScan: () -> Unit, onAi: () -> Unit, onPdf: () -> Unit, onSelect: (String) -> Unit) {
+    Surface(color = AppTheme.colors.surface) {
+        Column(Modifier.navigationBarsPadding()) {
+            HorizontalDivider(color = AppTheme.colors.line)
+            Row(Modifier.fillMaxWidth().heightIn(min = 68.dp).padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                listOf("home", "documents", "scan", "ai", "pdf").forEach { key ->
+                    if (key == "scan") {
+                        Column(Modifier.weight(1.1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                            FilledIconButton(
+                                onClick = onScan,
+                                modifier = Modifier.size(56.dp),
+                                colors = IconButtonDefaults.filledIconButtonColors(
+                                    containerColor = AppTheme.colors.accent,
+                                    contentColor = AppTheme.colors.onAccent,
+                                ),
+                            ) {
+                                Icon(androidx.compose.material.icons.Icons.Outlined.PhotoCamera, tr("Scan", "स्कैन"))
+                            }
+                            Text(tr("Scan", "स्कैन"), color = AppTheme.colors.accentText, fontSize = 11.sp)
+                        }
+                    } else {
+                        val label = when(key) { "home" -> tr("Home", "होम"); "documents" -> tr("Documents", "दस्तावेज़"); "ai" -> "AI Tools"; else -> tr("PDF Tools", "PDF टूल्स") }
+                        val icon = when(key) { "home" -> Icons.Outlined.Home; "documents" -> Icons.Outlined.Description; "ai" -> Icons.Outlined.AutoAwesome; else -> Icons.Outlined.PictureAsPdf }
+                        val selected = tab == key
+                        val tint by animateColorAsState(
+                            if (selected) AppTheme.colors.accentText else AppTheme.colors.muted,
+                            tween(180),
+                            label = "Navigation icon color",
+                        )
+                        val tileColor by animateColorAsState(
+                            if (selected) AppTheme.colors.accentSoft else Color.Transparent,
+                            tween(180),
+                            label = "Navigation selection",
+                        )
+                        val iconScale by animateFloatAsState(
+                            if (selected) 1.08f else 1f,
+                            tween(180),
+                            label = "Navigation icon scale",
+                        )
+                        Column(Modifier.weight(1f).heightIn(min = 48.dp).clip(RoundedCornerShape(12.dp)).background(tileColor).clickable { when (key) { "ai" -> onAi(); "pdf" -> onPdf(); else -> onSelect(key) } }.padding(vertical = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(icon, null, Modifier.size(22.dp).graphicsLayer { scaleX = iconScale; scaleY = iconScale }, tint = tint)
+                            Spacer(Modifier.height(4.dp))
+                            Text(label, fontSize = 11.sp, lineHeight = 14.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, color = tint, fontWeight = if(tab == key) FontWeight.SemiBold else FontWeight.Medium)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun PreviewCursor() {
     val lifecycle = LocalLifecycleOwner.current
     val state by lifecycle.lifecycle.currentStateFlow.collectAsState()
     val alpha =
@@ -763,132 +1471,22 @@ private fun PreviewCursor() {
 }
 
 @Composable
-private fun HeroCard(onCreate: () -> Unit) {
-    var appeared by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { appeared = true }
-    val reveal by
-        animateFloatAsState(
-            if (appeared) 1f else 0f,
-            animationSpec = tween(250, easing = LinearOutSlowInEasing),
-            label = "Document preview entrance",
-        )
-    Card(
-        onClick = onCreate,
-        modifier =
-            Modifier.fillMaxWidth().graphicsLayer {
-                alpha = reveal
-                translationY = (1f - reveal) * 12.dp.toPx()
-            },
-        shape = MaterialTheme.shapes.large,
-        colors =
-            CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-    ) {
-        Column(
-            Modifier.fillMaxWidth().padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Rounded.Description, null, tint = MaterialTheme.colorScheme.primary)
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    tr("Your next page", "आपका नया पेज"),
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.weight(1f),
-                )
-                PdfBadge()
-            }
-            Surface(
-                modifier =
-                    Modifier.fillMaxWidth().drawWithContent {
-                        drawContent()
-                        val fold = 16.dp.toPx()
-                        drawPath(
-                            androidx.compose.ui.graphics.Path().apply {
-                                moveTo(size.width - fold, 0f)
-                                lineTo(size.width, fold)
-                                lineTo(size.width - fold, fold)
-                                close()
-                            },
-                            Color(0xFFE8EBEF),
-                        )
-                    },
-                color = Color.White,
-                contentColor = Color(0xFF111827),
-                shape = RoundedCornerShape(8.dp),
-                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                shadowElevation = 2.dp,
-            ) {
-                Column(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(
-                        tr("Start writing here…", "यहाँ से लिखना शुरू करें…"),
-                        style = MaterialTheme.typography.bodyLarge,
-                    )
-                    PreviewCursor()
-                    listOf(1f, 0.86f, 0.62f).forEach { fraction ->
-                        Box(
-                            Modifier.fillMaxWidth(fraction)
-                                .height(2.dp)
-                                .background(Color(0xFFEDF0F4))
-                        )
-                    }
-                    Text(
-                        tr("Tap to open a blank document", "खाली दस्तावेज़ खोलने के लिए टैप करें"),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFF64748B),
-                    )
-                }
-            }
-            // The whole card is one accessible action; this is its visible button label.
-            Surface(
-                color = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-                shape = MaterialTheme.shapes.small,
-            ) {
-                Row(
-                    Modifier.fillMaxWidth().heightIn(min = 50.dp).padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center,
-                ) {
-                    Icon(Icons.Rounded.Edit, null, modifier = Modifier.size(20.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        tr("Write a new document", "नया दस्तावेज़ लिखें"),
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
 private fun SearchBox(
     value: String,
     onChange: (String) -> Unit,
     isTemplates: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
-    OutlinedTextField(
-        value,
-        onChange,
-        modifier.fillMaxWidth(),
-        placeholder = {
-            Text(
-                if (isTemplates) tr("Find templates…", "टेम्पलेट खोजें…")
-                else tr("Find your documents…", "दस्तावेज़ खोजें…")
-            )
-        },
-        leadingIcon = { Icon(Icons.Rounded.Search, null) },
-        trailingIcon = {
-            if (value.isNotEmpty()) {
-                IconButton(onClick = { onChange("") }) {
-                    Icon(Icons.Rounded.Close, tr("Clear search", "खोज साफ़ करें"))
-                }
-            }
-        },
-        singleLine = true,
+    BouncySearchBar(
+        query = value,
+        onQuery = onChange,
+        placeholder =
+            if (isTemplates) tr("Find templates…", "टेम्पलेट खोजें…")
+            else tr("Find your documents…", "दस्तावेज़ खोजें…"),
+        accentColor = MaterialTheme.colorScheme.primary,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
         shape = MaterialTheme.shapes.medium,
+        modifier = modifier,
     )
 }
 
@@ -1095,32 +1693,37 @@ private fun DocumentCard(
         else java.util.Locale.ENGLISH
     Card(
         onClick = onOpen,
-        modifier = modifier,
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp, pressedElevation = 0.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp, pressedElevation = 0.dp),
     ) {
         Row(
             Modifier.fillMaxWidth().padding(14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            MiniPaper(preview, Modifier.width(42.dp).height(59.dp))
+            Surface(shape = RoundedCornerShape(14.dp), color = HomeBlue.copy(alpha = .08f)) {
+                Box(Modifier.padding(8.dp)) {
+                    MiniPaper(preview, Modifier.width(38.dp).height(54.dp))
+                }
+            }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(
                     doc.title.ifBlank { tr("Untitled document", "नया दस्तावेज़") },
                     fontWeight = FontWeight.SemiBold,
-                    maxLines = 2,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 )
                 Text(
-                    DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT, locale)
+                    DateFormat.getDateInstance(DateFormat.MEDIUM, locale)
                         .format(Date(doc.modifiedAt)) +
                         (if (doc.isDraft) tr(" · Draft", " · ड्राफ़्ट") else ""),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            IconButton(onClick = onShare) { Icon(Icons.Rounded.Share, tr("Share", "शेयर करें")) }
+            IconButton(onClick = onShare) { Icon(Icons.Rounded.Share, tr("Share", "शेयर करें"), tint = HomeBlue, modifier = Modifier.size(20.dp)) }
             Box {
                 IconButton(onClick = { menu = true }) {
                     Icon(Icons.Rounded.MoreVert, tr("Document actions", "दस्तावेज़ विकल्प"))
@@ -1190,16 +1793,95 @@ private fun EmptyState(searching: Boolean) {
 
 @Composable
 private fun SettingsCard(title: String, content: @Composable ColumnScope.() -> Unit) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-    ) {
-        Column(
-            Modifier.fillMaxWidth().padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+    val colors = AppTheme.colors
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            title.uppercase(java.util.Locale.getDefault()),
+            modifier = Modifier.padding(start = 4.dp),
+            style = MaterialTheme.typography.labelMedium,
+            color = colors.muted,
+            fontWeight = FontWeight.Bold,
+        )
+        Surface(
+            shape = RoundedCornerShape(18.dp),
+            color = colors.surface,
+            border = BorderStroke(1.dp, colors.line),
         ) {
-            Text(title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-            content()
+            Column(Modifier.fillMaxWidth(), content = content)
+        }
+    }
+}
+
+@Composable
+private fun CompactSettingsRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    subtitle: String? = null,
+    onClick: (() -> Unit)? = null,
+    trailing: @Composable () -> Unit = {},
+) {
+    val colors = AppTheme.colors
+    val action = if (onClick == null) Modifier else Modifier.clickable(onClick = onClick)
+    Row(
+        Modifier.fillMaxWidth().then(action).heightIn(min = 56.dp).padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, null, Modifier.size(21.dp), tint = colors.accentText)
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, fontWeight = FontWeight.SemiBold, color = colors.ink)
+            if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.bodySmall, color = colors.muted)
+        }
+        Spacer(Modifier.width(8.dp))
+        if (onClick != null) Icon(Icons.Outlined.ChevronRight, null, Modifier.size(19.dp), tint = colors.muted)
+        else trailing()
+    }
+}
+
+@Composable
+private fun SettingsWelcome() {
+    val colors = AppTheme.colors
+    Row(Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(tr("Settings", "सेटिंग्स"), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = colors.ink)
+            Text("A4 Paper Typing", style = MaterialTheme.typography.bodyMedium, color = colors.muted)
+        }
+        Surface(shape = CircleShape, color = colors.accentSoft) {
+            Text(
+                "v${BuildConfig.VERSION_NAME}",
+                Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                color = colors.accentText,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SettingsChoices(
+    options: List<Pair<String, String>>,
+    selected: String,
+    icons: List<androidx.compose.ui.graphics.vector.ImageVector>? = null,
+    onSelect: (String) -> Unit,
+) {
+    val colors = AppTheme.colors
+    Surface(shape = RoundedCornerShape(12.dp), color = colors.bg, border = BorderStroke(1.dp, colors.line)) {
+        Row(Modifier.padding(2.dp)) {
+            options.forEachIndexed { index, (key, label) ->
+                val active = key == selected
+                Surface(
+                    onClick = { onSelect(key) },
+                    shape = RoundedCornerShape(10.dp),
+                    color = if (active) colors.accent else Color.Transparent,
+                    contentColor = if (active) colors.onAccent else colors.muted,
+                ) {
+                    Box(Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp), contentAlignment = Alignment.Center) {
+                        if (icons != null) Icon(icons[index], label, Modifier.size(19.dp))
+                        else Text(if (key == "en") "EN" else "हिं", fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.semantics { contentDescription = label })
+                    }
+                }
+            }
         }
     }
 }
@@ -1295,6 +1977,12 @@ internal fun TemplatePreview(
     }
 }
 
-private fun LazyListScope.insetItem(content: @Composable () -> Unit) {
-    item { Box(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) { content() } }
+private fun LazyListScope.insetItem(
+    key: String? = null,
+    contentType: String? = null,
+    content: @Composable () -> Unit,
+) {
+    item(key = key, contentType = contentType) {
+        Box(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) { content() }
+    }
 }
