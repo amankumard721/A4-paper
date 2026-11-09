@@ -214,15 +214,35 @@ fun LekhakApp(model: MainViewModel, ads: AdsController) {
             var scanPageLimit by rememberSaveable { mutableIntStateOf(50) }
             var scanCleanup by rememberSaveable { mutableStateOf(true) }
             var scanGallery by rememberSaveable { mutableStateOf(true) }
+            var photoPdfId by rememberSaveable { mutableStateOf<String?>(null) }
+            var addPhotoPages by rememberSaveable { mutableStateOf(false) }
+            var appendCamera by rememberSaveable { mutableStateOf(false) }
+            var appendGallery by rememberSaveable { mutableStateOf(false) }
+            val photoPdf = viewingImportedPdf?.takeIf { screen == "pdf" && it.id == photoPdfId }
+            val photoPageLimitMessage = tr("This PDF already has 50 pages.", "इस PDF में पहले से 50 पेज हैं।")
+            val showPhotoPdf: (ImportedPdfEntry) -> Unit = { entry ->
+                if (screen != "pdf") pdfReturnScreen = screen
+                photoPdfId = entry.id
+                externalPdfPath = null
+                awaitingPdf = false
+                pdfAction = null
+                screen = "pdf"
+            }
             val documentScanner =
                 rememberDocumentScanner(
-                    pageLimit = scanPageLimit,
+                    pageLimit = photoPdf?.let { (50 - it.pages).coerceAtLeast(1) } ?: scanPageLimit,
                     enhancedCleanup = scanCleanup,
-                    allowGallery = scanGallery,
+                    allowGallery = photoPdf == null && scanGallery,
                     blocked = importing || exporting,
-                    active = screen == "main" || screen == "scanner" || screen == "pdfTools",
+                    active = screen == "main" || screen == "scanner" || screen == "pdfTools" || photoPdf != null,
                     language = p.language,
-                    onPdf = { uri, pages ->
+                    onPdf = scanResult@{ uri, pages ->
+                        if (appendCamera && photoPdf != null) {
+                            appendCamera = false
+                            model.buildPhotoPdf(emptyList(), photoPdf, uri to pages, showPhotoPdf)
+                            return@scanResult
+                        }
+                        appendCamera = false
                         val returnScreen = screen
                         model.importScan(uri, pages) {
                             selectedTemplate = null
@@ -269,22 +289,39 @@ fun LekhakApp(model: MainViewModel, ads: AdsController) {
                 rememberLauncherForActivityResult(FilteredDocumentContract()) { uri ->
                     uri?.let { model.offerImport(it) }
                 }
-            val homeImagePicker =
-                rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri
-                    ->
-                    uri?.let {
-                        model.importImageDocument(it) {
-                            selectedTemplate = null
-                            editorReview = true
-                            screen = "editor"
+            val photoPicker = rememberLauncherForActivityResult(
+                ActivityResultContracts.PickMultipleVisualMedia(50)
+            ) { photos ->
+                val previous = if (appendGallery) photoPdf else null
+                val canAdd = !appendGallery || previous != null
+                appendGallery = false
+                if (canAdd && photos.isNotEmpty()) model.buildPhotoPdf(photos, previous, onReady = showPhotoPdf)
+            }
+            val pickPhotos = {
+                photoPicker.launch(
+                    androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                )
+            }
+            val openImage = { appendGallery = false; pickPhotos() }
+            if (addPhotoPages && photoPdf != null) {
+                AlertDialog(
+                    onDismissRequest = { addPhotoPages = false },
+                    title = { Text(tr("Add pages", "पेज जोड़ें")) },
+                    text = {
+                        Column {
+                            TextButton(onClick = {
+                                addPhotoPages = false
+                                appendGallery = true
+                                pickPhotos()
+                            }) { Text(tr("From gallery", "गैलरी से")) }
+                            TextButton(enabled = documentScanner.available, onClick = {
+                                addPhotoPages = false
+                                appendCamera = true
+                                documentScanner.start()
+                            }) { Text(tr("Scan with camera", "कैमरे से स्कैन करें")) }
                         }
-                    }
-                }
-            val openImage = {
-                homeImagePicker.launch(
-                    androidx.activity.result.PickVisualMediaRequest(
-                        ActivityResultContracts.PickVisualMedia.ImageOnly
-                    )
+                    },
+                    confirmButton = { TextButton(onClick = { addPhotoPages = false }) { Text(tr("Cancel", "रद्द करें")) } },
                 )
             }
             val openExcel = { excelPicker.launch(ImportFormat.EXCEL.mimeTypes) }
@@ -431,7 +468,11 @@ fun LekhakApp(model: MainViewModel, ads: AdsController) {
                             }
                         },
                     onManagePages = viewingImportedPdf?.let { entry -> { activePageTool = PdfPageTool.Manage; pdfPagesDialog = entry } },
-                    externalReader = viewingImportedPdf != null || pdf!!.file.path == externalPdfPath,
+                    externalReader = photoPdf == null && (viewingImportedPdf != null || pdf!!.file.path == externalPdfPath),
+                    onAddPages = photoPdf?.let { entry ->
+                        { if (entry.pages < 50) addPhotoPages = true else model.error.value = photoPageLimitMessage }
+                    },
+                    addingPages = importing || exporting || documentScanner.busy,
                     onSavedExit = { resume ->
                         val activity = context as? android.app.Activity
                         if (activity != null && pdf!!.file.path != externalPdfPath) {

@@ -44,3 +44,5 @@ table{border-collapse:collapse;table-layout:fixed;width:100%;max-width:100%;marg
 [data-image-frame]>img[data-asset-id]{position:absolute;display:block;left:50%;top:50%;max-width:none;max-height:none;margin:0;object-fit:fill;transform-origin:center}
 .rotation-grip{border:1px solid #0f6cbd;border-radius:50%;background:white;color:#0f6cbd;font:22px sans-serif;cursor:grab}
 .image-grip.n,.image-grip.s{cursor:ns-resize}.image-grip.e,.image-grip.w{cursor:ew-resize}
+
+.tiptap[contenteditable=true] > [data-image-frame]{touch-action:none;-webkit-touch-callout:none}

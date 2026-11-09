@@ -732,6 +732,13 @@ private fun EditorWorkspace(
                             }
                             .also {
                                 host = it
+                                it.onSelectionFormat = { action ->
+                                    if (action == "textColor") colorPicker = true
+                                    else {
+                                        ribbonTab = 0
+                                        ribbonOpen = true
+                                    }
+                                }
                                 it.load(document, prefs.language, dark)
                             }
                     },

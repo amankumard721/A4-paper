@@ -68,6 +68,8 @@ fun PdfScreen(
     onSavedExit: ((() -> Unit) -> Unit)? = null,
     onEditText: (() -> Unit)? = null,
     onManagePages: (() -> Unit)? = null,
+    onAddPages: (() -> Unit)? = null,
+    addingPages: Boolean = false,
 ) {
     val context = LocalContext.current
     var marking by remember(pdf.file.path) { mutableStateOf(false) }
@@ -575,46 +577,53 @@ fun PdfScreen(
                     }
                 }
             } else if (!externalReader) Surface(color = MaterialTheme.colorScheme.surface, shadowElevation = 2.dp) {
-                Row(
-                    Modifier.fillMaxWidth()
-                        .navigationBarsPadding()
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    FluentButton(
-                        onClick = { save.launch(safeTitle + ".pdf") },
-                        enabled = !saving,
-                        modifier = Modifier.weight(1f),
+                Column {
+                    if (onAddPages != null) TextButton(
+                        onClick = onAddPages,
+                        enabled = !addingPages && !saving && !sharing,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text(tr("+ Add pages", "+ पेज जोड़ें")) }
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .navigationBarsPadding()
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        Icon(Icons.Rounded.SaveAlt, null)
-                        Spacer(Modifier.width(6.dp))
-                        Text(tr("Save as", "सहेजें"), maxLines = 1)
-                    }
-                    OutlinedIconButton(
-                        onClick = sharePdf,
-                        enabled = !sharing,
-                        modifier = Modifier.size(48.dp),
-                    ) {
-                        Icon(Icons.Rounded.Share, tr("Share", "साझा करें"))
-                    }
-                    OutlinedIconButton(
-                        modifier = Modifier.size(48.dp),
-                        onClick = {
-                            try {
-                                (context.getSystemService(android.content.Context.PRINT_SERVICE)
-                                        as PrintManager)
-                                    .print(
-                                        pdf.title,
-                                        ExistingPdfPrintAdapter(pdf),
-                                        PdfEngine.attributes(pdf.landscape),
-                                    )
-                            } catch (_: Exception) {
-                                actionError = "Printing is unavailable on this device."
-                            }
-                        },
-                    ) {
-                        Icon(Icons.Rounded.Print, tr("Print", "प्रिंट"))
+                        FluentButton(
+                            onClick = { save.launch(safeTitle + ".pdf") },
+                            enabled = !saving,
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Icon(Icons.Rounded.SaveAlt, null)
+                            Spacer(Modifier.width(6.dp))
+                            Text(tr("Save as", "सहेजें"), maxLines = 1)
+                        }
+                        OutlinedIconButton(
+                            onClick = sharePdf,
+                            enabled = !sharing,
+                            modifier = Modifier.size(48.dp),
+                        ) {
+                            Icon(Icons.Rounded.Share, tr("Share", "साझा करें"))
+                        }
+                        OutlinedIconButton(
+                            modifier = Modifier.size(48.dp),
+                            onClick = {
+                                try {
+                                    (context.getSystemService(android.content.Context.PRINT_SERVICE)
+                                            as PrintManager)
+                                        .print(
+                                            pdf.title,
+                                            ExistingPdfPrintAdapter(pdf),
+                                            PdfEngine.attributes(pdf.landscape),
+                                        )
+                                } catch (_: Exception) {
+                                    actionError = "Printing is unavailable on this device."
+                                }
+                            },
+                        ) {
+                            Icon(Icons.Rounded.Print, tr("Print", "प्रिंट"))
+                        }
                     }
                 }
             }

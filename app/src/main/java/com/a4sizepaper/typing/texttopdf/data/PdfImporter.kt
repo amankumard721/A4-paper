@@ -59,6 +59,105 @@ class PdfImporter(
             saved
         }
 
+    suspend fun photoPdf(
+        photos: List<Uri>,
+        previous: ImportedPdfEntry?,
+        scan: Pair<Uri, Int>?,
+    ): ImportedPdfEntry = withContext(Dispatchers.IO) {
+        val added = scan?.second ?: photos.size
+        require(added > 0 && (previous?.pages ?: 0) + added <= ScanSource.MAX_PAGES) {
+            "A photo PDF can contain up to 50 pages."
+        }
+        initialize()
+        val cancellation = currentCoroutineContext()
+        val target = store.newStaging()
+        try {
+            val merger = com.tom_roush.pdfbox.multipdf.PDFMergerUtility()
+            PDDocument(memorySettings()).use { output ->
+                previous?.let { entry ->
+                    load(store.get(entry.id).file).use { merger.appendDocument(output, it) }
+                }
+                for (photo in photos) {
+                    cancellation.ensureActive()
+                    addPhotoPage(output, photo)
+                }
+                scan?.let { (uri, expected) ->
+                    val source = store.newStaging()
+                    try {
+                        ScanSource.open(context, uri).use { input ->
+                            source.outputStream().use { file ->
+                                val buffer = ByteArray(16_384)
+                                val bounded = BoundedPdfOutput(file) { cancellation.ensureActive() }
+                                while (true) {
+                                    cancellation.ensureActive()
+                                    val count = input.read(buffer)
+                                    if (count < 0) break
+                                    bounded.write(buffer, 0, count)
+                                }
+                            }
+                        }
+                        load(source).use {
+                            ScanSource.validatePages(expected, it.numberOfPages)
+                            merger.appendDocument(output, it)
+                        }
+                    } finally {
+                        source.delete()
+                        ScanSource.privateCacheFile(context.cacheDir, uri)?.delete()
+                    }
+                }
+                FileOutputStream(target).use { file ->
+                    output.save(BoundedPdfOutput(file) { cancellation.ensureActive() })
+                    file.fd.sync()
+                }
+            }
+            val pages = validateForViewing(target)
+            cancellation.ensureActive()
+            store.publish(target, previous?.title ?: "Photo scan", pages)
+        } finally {
+            target.delete()
+        }
+    }
+
+    private fun addPhotoPage(pdf: PDDocument, uri: Uri) {
+        val resolver = context.contentResolver
+        fun open() = requireNotNull(resolver.openInputStream(uri)) { "The selected photo is unavailable." }
+        val options = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        open().use { android.graphics.BitmapFactory.decodeStream(it, null, options) }
+        require(options.outWidth > 0 && options.outHeight > 0) { "This photo format could not be decoded." }
+        options.inJustDecodeBounds = false
+        while (maxOf(options.outWidth, options.outHeight) / options.inSampleSize.coerceAtLeast(1) > 2000) {
+            options.inSampleSize = options.inSampleSize.coerceAtLeast(1) * 2
+        }
+        val exif = open().use { androidx.exifinterface.media.ExifInterface(it) }
+        val bitmap = open().use { android.graphics.BitmapFactory.decodeStream(it, null, options) }
+            ?: error("The selected photo could not be decoded.")
+        try {
+            val transform = android.graphics.Matrix().apply {
+                if (exif.isFlipped) postScale(-1f, 1f)
+                postRotate(exif.rotationDegrees.toFloat())
+            }
+            val oriented = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, transform, true)
+            try {
+                val size = com.tom_roush.pdfbox.pdmodel.common.PDRectangle.A4
+                val page = PDPage(size)
+                pdf.addPage(page)
+                val scale = minOf(size.width / oriented.width, size.height / oriented.height)
+                val width = oriented.width * scale
+                val height = oriented.height * scale
+                val image = if (oriented.hasAlpha())
+                    com.tom_roush.pdfbox.pdmodel.graphics.image.LosslessFactory.createFromImage(pdf, oriented)
+                else JPEGFactory.createFromImage(pdf, oriented, 0.88f)
+                com.tom_roush.pdfbox.pdmodel.PDPageContentStream(pdf, page).use {
+                    it.drawImage(image, (size.width - width) / 2, (size.height - height) / 2, width, height)
+                }
+            } finally {
+                if (oriented !== bitmap) oriented.recycle()
+            }
+        } finally {
+            bitmap.recycle()
+        }
+    }
+
     private suspend fun copyImport(
         uri: Uri,
         displayName: String,

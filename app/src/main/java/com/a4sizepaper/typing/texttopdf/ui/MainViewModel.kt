@@ -249,6 +249,31 @@ constructor(
             }
     }
 
+    fun buildPhotoPdf(
+        photos: List<android.net.Uri>,
+        previous: ImportedPdfEntry? = null,
+        scan: Pair<android.net.Uri, Int>? = null,
+        onReady: (ImportedPdfEntry) -> Unit,
+    ) {
+        if (importing.value || exporting.value) return
+        importing.value = true
+        importLabel.value = "photo PDF"
+        importJob = viewModelScope.launch {
+            try {
+                val entry = PdfImporter(context, importedPdfStore).photoPdf(photos, previous, scan)
+                refreshImportedPdfs()
+                showImportedPdf(entry)
+                onReady(entry)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (failure: Exception) {
+                error.value = failure.message ?: "Could not add these pages."
+            } finally {
+                importing.value = false
+            }
+        }
+    }
+
     fun importScan(uri: android.net.Uri, pages: Int, onReady: () -> Unit) {
         if (importing.value || exporting.value) {
             error.value = "Wait for the current import or export before saving a scan."

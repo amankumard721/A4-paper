@@ -46,5 +46,16 @@ try{
  await h.page.evaluate(()=>window.Lekhak.command('imageWidth','100'));
  assert.deepEqual(await h.page.evaluate(()=>window.Lekhak.getJSON()),beforeLimit,'editor rejects image larger than printable height');
  assert.ok(await h.page.evaluate(()=>(window.__messages||[]).some(m=>m.type==='error'&&m.message.includes('printable page'))),'editor reports printable limit immediately');
+ await boot([image({}),{type:'paragraph',content:[{type:'text',text:'Drop after this text'}]}]);
+ const photo=await h.page.locator('#editor img').boundingBox();
+ const paragraph=await h.page.getByText('Drop after this text').boundingBox();
+ await h.page.mouse.move(photo.x+photo.width/2,photo.y+photo.height/2);
+ await h.page.mouse.down();
+ await h.page.waitForTimeout(500);
+ await h.page.mouse.move(paragraph.x+paragraph.width*.9,paragraph.y+paragraph.height,{steps:8});
+ await h.page.mouse.up();
+ const moved=await h.page.evaluate(()=>window.Lekhak.getJSON());
+ assert.equal(moved.content[1].type,'image','holding the image moves it after the paragraph');
+ assert.equal(moved.content[1].attrs.align,'right','horizontal drag changes image alignment');
  assert.deepEqual(errors,[]);console.log('Image stretch, 8 handles, arbitrary angle, round trip, reset, undo and PDF export: PASS');
 }finally{await h.close();}

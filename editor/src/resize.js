@@ -67,6 +67,8 @@ export const TouchResize=Extension.create({
 },props:{handleDOMEvents:{pointerdown(view,event){if(!view.editable)return false;const frame=event.target.closest?.('[data-image-frame]');if(!frame||!view.dom.contains(frame))return false;let position=null;view.state.doc.descendants((node,pos)=>{if(node.type.name==='image'&&view.nodeDOM(pos)===frame)position=pos;});if(position===null)return false;event.preventDefault();view.focus();view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc,position)));return true;}},handleClickOn(view,pos,node,nodePos){if(!view.editable||node.type.name!=='image')return false;view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc,nodePos)));return true;}},view(view){
   const layer=document.createElement('div');layer.className='resize-tools';document.body.append(layer);
   let frame=0,drag=null,destroyed=false;
+  let imageMove=null,hold=null;
+  const listeners=new AbortController();
   const schedule=()=>{if(!frame&&!destroyed)frame=requestAnimationFrame(()=>{frame=0;render();});};
   const button=(label,kind,x,y)=>{
    const b=document.createElement('button');b.type='button';b.className=`resize-grip ${kind}`;
@@ -76,8 +78,11 @@ export const TouchResize=Extension.create({
   function begin(event,preview,apply){
    if(!event.isPrimary||event.button!==0||!view.editable)return;
    event.preventDefault();event.stopPropagation();
-   const handle=event.currentTarget;handle.setPointerCapture(event.pointerId);
-   drag={id:event.pointerId,doc:view.state.doc,preview,apply,handle};
+   capture(event.currentTarget,event.pointerId,preview,apply);
+  }
+  function capture(handle,id,preview,apply){
+   handle.setPointerCapture(id);
+   drag={id,doc:view.state.doc,preview,apply,handle};
   }
   function end(event,cancel=false){
    if(!drag||event.pointerId!==drag.id)return;
@@ -90,8 +95,36 @@ export const TouchResize=Extension.create({
   const up=e=>end(e);const cancel=e=>end(e,true);
   layer.addEventListener('pointermove',move);layer.addEventListener('pointerup',up);layer.addEventListener('pointercancel',cancel);
   layer.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();});
+  function clearHold(){
+   if(hold)clearTimeout(hold.timer);
+   hold=null;
+  }
+  function listen(type,handler){
+   view.dom.addEventListener(type,handler,{capture:true,signal:listeners.signal});
+  }
+  listen('pointerdown',e=>{
+   clearHold();
+   if(!view.editable||drag||!e.isPrimary||e.button!==0)return;
+   const image=e.target.closest?.('[data-image-frame]');
+   if(image?.parentElement!==view.dom)return;
+   const {pointerId,clientX,clientY}=e;
+   hold={pointerId,clientX,clientY,timer:setTimeout(()=>{
+    clearHold();
+    if(imageMove?.image===image&&view.editable&&image.isConnected){
+     imageMove.start(image,pointerId);
+    }
+   },450)};
+  });
+  listen('pointermove',e=>{
+   if(hold?.pointerId===e.pointerId&&Math.hypot(e.clientX-hold.clientX,e.clientY-hold.clientY)>10)clearHold();
+   move(e);
+  });
+  listen('pointerup',e=>{if(hold?.pointerId===e.pointerId)clearHold();up(e);});
+  listen('pointercancel',e=>{if(hold?.pointerId===e.pointerId)clearHold();cancel(e);});
+  listen('contextmenu',e=>{if(drag&&e.target.closest?.('[data-image-frame]'))e.preventDefault();});
   function render(){
    if(drag)return;
+   imageMove=null;
    layer.replaceChildren();
    view.dom.querySelectorAll('[data-image-frame]').forEach(layoutImage);
    if(!view.editable||!view.dom.isConnected||document.body.classList.contains('pages'))return;
@@ -104,7 +137,45 @@ export const TouchResize=Extension.create({
     if(rect.width<1||rect.height<1||available<=0||!Number.isFinite(scale))return;
     const attrs=selection.node.attrs,natural=img.naturalHeight/img.naturalWidth,g=imageGeometry(attrs.rotation,attrs.stretchRatio??natural);
     const w=frame.offsetWidth/g.x,h=w*g.ratio,t=g.angle*Math.PI/180,cx=rect.left+rect.width/2,cy=rect.top+rect.height/2;
-    outline(rect);
+    const guide=outline(rect);
+    if(parent===view.dom){
+     const grip=button(hindi?'चित्र की जगह बदलें':'Move image','image-move-grip',clamp(rect.right+22,24,window.innerWidth-24),cy);
+     grip.textContent='↕'; grip.style.cssText += ';border-radius:50%;background:white;color:#0f6cbd;cursor:grab';
+     const start=(handle,id)=>{
+      const root=view.dom.getBoundingClientRect();
+      const blocks=[];
+      view.state.doc.forEach((node,pos)=>{
+       const dom=view.nodeDOM(pos);
+       if(pos!==selection.from&&dom instanceof HTMLElement){
+        const box=dom.getBoundingClientRect();
+        blocks.push({pos,mid:box.top+box.height/2,top:box.top});
+       }
+      });
+      let target=null,align=attrs.align;
+      capture(handle,id,p=>{
+       const next=blocks.find(block=>p.clientY<block.mid);
+       target=next?.pos??view.state.doc.content.size;
+       const fraction=(p.clientX-root.left)/root.width;
+       align=fraction<1/3?'left':fraction>2/3?'right':'center';
+       Object.assign(guide.style,{left:`${root.left}px`,top:`${next?.top??Math.min(root.bottom,p.clientY)}px`,width:`${root.width}px`,height:'2px'});
+      },()=>{
+       if(target===null)return;
+       if(target===selection.from||target===selection.to){if(align!==attrs.align)save({align});return;}
+       const tr=view.state.tr.delete(selection.from,selection.to);
+       const destination=tr.mapping.map(target);
+       if(!tr.doc.canReplaceWith(tr.doc.resolve(destination).index(),tr.doc.resolve(destination).index(),selection.node.type))return;
+       tr.insert(destination,selection.node.type.create({...attrs,align}));
+       tr.setSelection(NodeSelection.create(tr.doc,destination));
+       if(!tr.doc.eq(view.state.doc))commit(view,tr);
+      });
+     };
+     imageMove={image:frame,start};
+     grip.onpointerdown=e=>{
+      if(!e.isPrimary||e.button!==0||!view.editable)return;
+      e.preventDefault();
+      start(grip,e.pointerId);
+     };
+    }
     const save=values=>commit(view,view.state.tr.setNodeMarkup(selection.from,null,{...attrs,...values}));
     const position=(sx,sy)=>({x:cx+(sx*w/2*Math.cos(t)-sy*h/2*Math.sin(t))*scale,y:cy+(sx*w/2*Math.sin(t)+sy*h/2*Math.cos(t))*scale});
     for(const [name,sx,sy] of [['nw',-1,-1],['n',0,-1],['ne',1,-1],['e',1,0],['se',1,1],['s',0,1],['sw',-1,1],['w',-1,0]]){
@@ -264,6 +335,6 @@ export const TouchResize=Extension.create({
   window.visualViewport?.addEventListener('resize',schedule);window.visualViewport?.addEventListener('scroll',schedule);
   view.dom.addEventListener('load',schedule,true);
   const observer=new ResizeObserver(schedule);observer.observe(view.dom);schedule();
-  return {update: schedule,destroy(){destroyed=true;drag=null;cancelAnimationFrame(frame);observer.disconnect();layer.remove();window.removeEventListener('resize',schedule);document.removeEventListener('scroll',schedule,true);window.visualViewport?.removeEventListener('resize',schedule);window.visualViewport?.removeEventListener('scroll',schedule);view.dom.removeEventListener('load',schedule,true);}};
+  return {update: schedule,destroy(){destroyed=true;clearHold();listeners.abort();drag=null;cancelAnimationFrame(frame);observer.disconnect();layer.remove();window.removeEventListener('resize',schedule);document.removeEventListener('scroll',schedule,true);window.visualViewport?.removeEventListener('resize',schedule);window.visualViewport?.removeEventListener('scroll',schedule);view.dom.removeEventListener('load',schedule,true);}};
  }})];}
 });

@@ -31,6 +31,7 @@ class EditorHost(context: Context, private val onMessage: (JSONObject) -> Unit) 
 
     private var selectionToolsEnabled = false
     private var selectionLanguage = "en"
+    var onSelectionFormat: ((String) -> Unit)? = null
 
     override fun startActionMode(callback: ActionMode.Callback, type: Int): ActionMode? {
         if (type != ActionMode.TYPE_FLOATING || !selectionToolsEnabled) {
@@ -40,6 +41,8 @@ class EditorHost(context: Context, private val onMessage: (JSONObject) -> Unit) 
             Triple(0x00A40001, "bold", if (selectionLanguage == "hi") "बोल्ड" else "Bold"),
             Triple(0x00A40002, "italic", if (selectionLanguage == "hi") "इटैलिक" else "Italic"),
             Triple(0x00A40003, "underline", if (selectionLanguage == "hi") "रेखांकित" else "Underline"),
+            Triple(0x00A40004, "textColor", if (selectionLanguage == "hi") "रंग" else "Text colour"),
+            Triple(0x00A40005, "formatText", if (selectionLanguage == "hi") "फ़ॉन्ट और आकार" else "Font & size"),
         )
         return super.startActionMode(object : ActionMode.Callback2() {
             override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean =
@@ -67,7 +70,12 @@ class EditorHost(context: Context, private val onMessage: (JSONObject) -> Unit) 
             override fun onActionItemClicked(mode: ActionMode, item: MenuItem): Boolean {
                 val action = actions.firstOrNull { it.first == item.itemId }
                     ?: return callback.onActionItemClicked(mode, item)
-                if (selectionToolsEnabled) command(action.second)
+                if (selectionToolsEnabled) {
+                    when (action.second) {
+                        "textColor", "formatText" -> onSelectionFormat?.invoke(action.second)
+                        else -> command(action.second)
+                    }
+                }
                 return true
             }
 
