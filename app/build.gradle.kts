@@ -1,4 +1,5 @@
 plugins {
+    id("com.google.gms.google-services")
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
@@ -11,9 +12,11 @@ val liveAdsEnabled = providers.gradleProperty("adsEnabled").orElse("false").get(
 val liveAdmobAppId = providers.gradleProperty("admobAppId").orElse("").get()
 val liveBannerId = providers.gradleProperty("admobBannerId").orElse("").get()
 val liveInterstitialId = providers.gradleProperty("admobInterstitialId").orElse("").get()
+val liveAppOpenId = providers.gradleProperty("admobAppOpenId").orElse("").get()
 val demoInterstitialId = "ca-app-pub-3940256099942544/1033173712"
 val demoAppId = "ca-app-pub-3940256099942544~3347511713"
 val demoBannerId = "ca-app-pub-3940256099942544/9214589741"
+val demoAppOpenId = "ca-app-pub-3940256099942544/9257395921"
 
 if (liveAdsEnabled) {
     require(
@@ -32,7 +35,10 @@ if (liveAdsEnabled) {
         Regex("ca-app-pub-[0-9]{16}/[0-9]{10}").matches(liveInterstitialId) &&
             !liveInterstitialId.startsWith("ca-app-pub-3940256099942544")
         )) { "Supply a production interstitial ID via -PadmobInterstitialId." }
-
+    require(liveAppOpenId.isEmpty() || (
+        Regex("ca-app-pub-[0-9]{16}/[0-9]{10}").matches(liveAppOpenId) &&
+            !liveAppOpenId.startsWith("ca-app-pub-3940256099942544")
+        )) { "Supply a production App Open ID via -PadmobAppOpenId." }
 }
 
 android {
@@ -42,8 +48,8 @@ android {
         applicationId = "com.a4sizepaper.typing.texttopdf"
         minSdk = 26
         targetSdk = 36
-        versionCode = 12
-        versionName = "1.7.1"
+        versionCode = 14
+        versionName = "2.0.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     // Optional read-only reference to an existing local debug signing store.
@@ -62,11 +68,12 @@ android {
     }
     buildTypes {
         debug {
-            manifestPlaceholders["admobAppId"] = demoAppId
+            manifestPlaceholders["admobAppId"] = if (liveAdmobAppId.isNotEmpty()) liveAdmobAppId else demoAppId
             buildConfigField("boolean", "ADS_ENABLED", "true")
-            buildConfigField("boolean", "ADS_DEMO_MODE", "true")
-            buildConfigField("String", "ADMOB_INTERSTITIAL_ID", "\"$demoInterstitialId\"")
-            buildConfigField("String", "ADMOB_BANNER_ID", "\"$demoBannerId\"")
+            buildConfigField("boolean", "ADS_DEMO_MODE", if (liveAdmobAppId.isNotEmpty()) "false" else "true")
+            buildConfigField("String", "ADMOB_INTERSTITIAL_ID", "\"${if (liveInterstitialId.isNotEmpty()) liveInterstitialId else demoInterstitialId}\"")
+            buildConfigField("String", "ADMOB_BANNER_ID", "\"${if (liveBannerId.isNotEmpty()) liveBannerId else demoBannerId}\"")
+            buildConfigField("String", "ADMOB_APP_OPEN_ID", "\"${if (liveAppOpenId.isNotEmpty()) liveAppOpenId else demoAppOpenId}\"")
         }
         release {
             manifestPlaceholders["admobAppId"] = if (liveAdsEnabled) liveAdmobAppId else demoAppId
@@ -78,6 +85,7 @@ android {
                 "ADMOB_BANNER_ID",
                 "\"${if (liveAdsEnabled) liveBannerId else ""}\"",
             )
+            buildConfigField("String", "ADMOB_APP_OPEN_ID", "\"${if (liveAdsEnabled) liveAppOpenId else ""}\"")
             if (!uploadStore.isNullOrBlank()) signingConfig = signingConfigs.getByName("upload")
             isDebuggable = false
             isMinifyEnabled = true
@@ -118,6 +126,8 @@ android {
 ksp { arg("room.schemaLocation", "$projectDir/schemas") }
 
 dependencies {
+    implementation(platform("com.google.firebase:firebase-bom:35.1.0"))
+    implementation("com.google.firebase:firebase-messaging")
     implementation(platform("androidx.compose:compose-bom:2024.10.01"))
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.exifinterface:exifinterface:1.3.7")

@@ -66,4 +66,9 @@ enum class ImportFormat(val label: String, val mimeTypes: Array<String>) {
     }
 }
 
-data class PendingImport(val uri: Uri, val format: ImportFormat, val external: Boolean = false)
+data class PendingImport(
+    val uri: Uri,
+    val format: ImportFormat,
+    val external: Boolean = false,
+    val openPdfMarkup: Boolean = false,
+)

@@ -95,11 +95,14 @@ internal fun PdfToolsScreen(
             }
             item { Text(tr("Organize & scan", "व्यवस्थित करें और स्कैन करें"), style = MaterialTheme.typography.titleMedium, color = colors.ink) }
             items(pageTools) { PdfToolRow(it, !busy) }
+            if (!busy) item(key = "pdf-tools-ad") { banner() }
             item { Text(tr("Optimize PDF", "PDF का आकार घटाएँ"), style = MaterialTheme.typography.titleMedium, color = colors.ink) }
             item { PdfToolRow(compress, !busy) }
             item { Text(tr("Convert to PDF", "PDF में बदलें"), style = MaterialTheme.typography.titleMedium, color = colors.ink) }
             items(conversions) { PdfToolRow(it, !busy) }
-            if (!busy) item(key = "pdf-tools-ad") { banner() }
+            if (!busy) item(key = "pdf-tools-end-ad") {
+                Box(Modifier.padding(top = 16.dp, bottom = 24.dp)) { banner() }
+            }
         }
     }
 }

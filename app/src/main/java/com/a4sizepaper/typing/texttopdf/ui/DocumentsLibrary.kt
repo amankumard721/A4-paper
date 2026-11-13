@@ -54,6 +54,7 @@ internal fun DocumentsLibrary(
     onGrid: (Boolean) -> Unit,
     language: String,
     importing: Boolean,
+    inlineAd: (@Composable () -> Unit)? = null,
     onImport: () -> Unit,
     onCreate: () -> Unit,
     onOpen: (DocumentEntry) -> Unit,
@@ -287,7 +288,8 @@ internal fun DocumentsLibrary(
                                 )
                         }
                     }
-                items(docs, key = { "doc-${it.id}" }) { doc ->
+                val firstSection = if (inlineAd != null && docs.size >= 12) docs.take(8) else docs
+                items(firstSection, key = { "doc-${it.id}" }) { doc ->
                     LibraryDocument(
                         doc,
                         formatter.format(Instant.ofEpochMilli(doc.modifiedAt)),
@@ -298,12 +300,29 @@ internal fun DocumentsLibrary(
                         modifier = Modifier.animateItem(),
                     )
                 }
+                if (firstSection.size < docs.size && inlineAd != null) {
+                    item(key = "library-documents-ad", span = { GridItemSpan(maxLineSpan) }) { inlineAd() }
+                    items(docs.drop(firstSection.size), key = { "doc-${it.id}" }) { doc ->
+                        LibraryDocument(
+                            doc, formatter.format(Instant.ofEpochMilli(doc.modifiedAt)), grid,
+                            onOpen = { onOpen(doc) },
+                            onShare = { onExport(doc, "share") },
+                            onMore = { menuId = doc.id },
+                            modifier = Modifier.animateItem(),
+                        )
+                    }
+                }
                 if (pdfs.isNotEmpty())
                     item(span = { GridItemSpan(maxLineSpan) }) {
                         Text(libraryText(R.string.library_saved_pdfs), fontWeight = FontWeight.Bold)
                     }
                 items(pdfs, key = { "pdf-${it.id}" }, span = { GridItemSpan(maxLineSpan) }) {
                     pdfCard(it)
+                }
+                if (inlineAd != null && docs.size + pdfs.size >= 4 &&
+                    (firstSection.size == docs.size || docs.size - firstSection.size + pdfs.size >= 8)
+                ) {
+                    item(key = "library-end-ad", span = { GridItemSpan(maxLineSpan) }) { inlineAd() }
                 }
             }
             ExtendedFloatingActionButton(

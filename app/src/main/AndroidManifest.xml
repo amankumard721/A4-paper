@@ -14,22 +14,19 @@
             android:value="${admobAppId}" />
         <meta-data android:name="com.google.android.gms.ads.DELAY_APP_MEASUREMENT_INIT"
             android:value="true" />
+        <meta-data android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="app_updates" />
+        <service android:name=".AppMessagingService" android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
         <activity android:name=".MainActivity" android:exported="true"
             android:configChanges="locale|layoutDirection|keyboard|keyboardHidden|navigation|orientation|screenSize|screenLayout|smallestScreenSize"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="content" android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
-                <data android:mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
-                <data android:mimeType="application/vnd.ms-excel" />
-                <data android:mimeType="text/csv" />
-                <data android:mimeType="application/pdf" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
@@ -41,6 +38,54 @@
                 <data android:mimeType="application/pdf" />
             </intent-filter>
         </activity>
+        <activity-alias android:name=".OpenWord" android:targetActivity=".MainActivity"
+            android:label="A4 · Word Editor" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".OpenExcel" android:targetActivity=".MainActivity"
+            android:label="A4 · Excel Editor" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+                <data android:mimeType="application/vnd.ms-excel" />
+                <data android:mimeType="text/csv" />
+                <data android:mimeType="text/comma-separated-values" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".OpenPdf" android:targetActivity=".MainActivity"
+            android:label="A4 · PDF Reader" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:mimeType="application/pdf" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".OpenPdfMarkup" android:targetActivity=".MainActivity"
+            android:label="A4 · Mark up PDF" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:mimeType="application/pdf" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".MakePdf" android:targetActivity=".MainActivity"
+            android:label="Make PDF" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+        </activity-alias>
         <service android:name="androidx.work.impl.foreground.SystemForegroundService"
             android:foregroundServiceType="shortService" tools:node="merge" />
         <provider android:name="androidx.core.content.FileProvider"

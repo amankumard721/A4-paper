@@ -282,8 +282,20 @@ private fun EditorWorkspace(
                             IconButton(onClick = { colorPicker = true }, enabled = ready) {
                                 Icon(Icons.Rounded.FormatColorText, tr("Text color", "टेक्स्ट का रंग"))
                             }
+                            VerticalDivider(Modifier.height(24.dp), color = colors.line)
                             IconButton(onClick = { ribbonTab = 1; ribbonOpen = true }, enabled = ready) {
-                                Icon(Icons.Rounded.FormatAlignLeft, tr("Paragraph", "अनुच्छेद"))
+                                Icon(
+                                    when (alignment) {
+                                        "center" -> Icons.Rounded.FormatAlignCenter
+                                        "right" -> Icons.Rounded.FormatAlignRight
+                                        "justify" -> Icons.Rounded.FormatAlignJustify
+                                        else -> Icons.Rounded.FormatAlignLeft
+                                    },
+                                    tr("Paragraph alignment", "अनुच्छेद का संरेखण"),
+                                )
+                            }
+                            FormatToggleButton(Icons.Rounded.FormatListBulleted, bulletList, ready, tr("Bulleted list", "बुलेट सूची")) {
+                                host?.command("bulletList")
                             }
                         }
                     }

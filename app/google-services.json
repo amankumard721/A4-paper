@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "188224994523",
+    "project_id": "a4-paper-ac41c",
+    "storage_bucket": "a4-paper-ac41c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:188224994523:android:ad5393fe3d0b26e60e60fe",
+        "android_client_info": {
+          "package_name": "com.a4sizepaper.typing.texttopdf"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBG5Oir-gtctQ6Rn5Vp1alzAkYE1IyIcuc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

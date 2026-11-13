@@ -146,7 +146,12 @@ constructor(
             }
     }
 
-    fun offerImport(uri: android.net.Uri, format: ImportFormat? = null, external: Boolean = false) {
+    fun offerImport(
+        uri: android.net.Uri,
+        format: ImportFormat? = null,
+        external: Boolean = false,
+        openPdfMarkup: Boolean = false,
+    ) {
         if (importing.value || exporting.value) {
             error.value = "Wait for the current import or export to finish."
             return
@@ -155,7 +160,7 @@ constructor(
             try {
                 val kind =
                     withContext(Dispatchers.IO) { ImportFormat.validate(context, uri, format) }
-                pendingImport.value = PendingImport(uri, kind, external)
+                pendingImport.value = PendingImport(uri, kind, external, openPdfMarkup)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -247,6 +252,16 @@ constructor(
                     importing.value = false
                 }
             }
+    }
+
+    internal val pendingSharedPhotos = MutableStateFlow<List<android.net.Uri>>(emptyList())
+
+    fun offerSharedPhotos(photos: List<android.net.Uri>) {
+        if (photos.isEmpty() || photos.size > 50 || photos.any { it.scheme != "content" }) {
+            error.value = "Share 1 to 50 photos from your gallery."
+            return
+        }
+        pendingSharedPhotos.value = photos.toList()
     }
 
     fun buildPhotoPdf(

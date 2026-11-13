@@ -9,6 +9,7 @@ import com.google.android.gms.ads.FullScreenContentCallback
 import com.google.android.gms.ads.LoadAdError
 import com.google.android.gms.ads.interstitial.InterstitialAd
 import com.google.android.gms.ads.interstitial.InterstitialAdLoadCallback
+import com.google.android.gms.ads.appopen.AppOpenAd
 import androidx.annotation.MainThread
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
@@ -50,9 +51,12 @@ class AdsController(context: Context) {
     private var interstitial: InterstitialAd? = null
     private var loadedAt = 0L
     private var loadingGeneration: Long? = null
+    private var appOpenAd: AppOpenAd? = null
+    private var appOpenLoadedAt = 0L
+    private var loadingAppOpenGeneration: Long? = null
     private var showing = false
 
-    private fun preloadInterstitial() {
+    internal fun preloadInterstitial() {
         val generation = gate.generation
         if (!canRequest(generation) || showing || loadingGeneration == generation ||
             BuildConfig.ADMOB_INTERSTITIAL_ID.isBlank()) return
@@ -80,11 +84,79 @@ class AdsController(context: Context) {
         )
     }
 
+    fun preloadAppOpenAd() {
+        val generation = gate.generation
+        if (!canRequest(generation) || showing || loadingAppOpenGeneration == generation ||
+            BuildConfig.ADMOB_APP_OPEN_ID.isBlank()) return
+        if (appOpenAd != null && SystemClock.elapsedRealtime() - appOpenLoadedAt < 4 * 3600_000L) return
+        appOpenAd = null
+        loadingAppOpenGeneration = generation
+        AppOpenAd.load(
+            appContext,
+            BuildConfig.ADMOB_APP_OPEN_ID,
+            AdRequest.Builder().build(),
+            object : AppOpenAd.AppOpenAdLoadCallback() {
+                override fun onAdLoaded(ad: AppOpenAd) {
+                    if (loadingAppOpenGeneration != generation) return
+                    loadingAppOpenGeneration = null
+                    if (canRequest(generation)) {
+                        appOpenAd = ad
+                        appOpenLoadedAt = SystemClock.elapsedRealtime()
+                    }
+                }
+
+                override fun onAdFailedToLoad(error: LoadAdError) {
+                    if (loadingAppOpenGeneration == generation) loadingAppOpenGeneration = null
+                }
+            },
+        )
+    }
+
+    fun showAppOpenAdIfAvailable(activity: Activity, onContinue: () -> Unit = {}) {
+        if (showing || !canRequest(gate.generation) || BuildConfig.ADMOB_APP_OPEN_ID.isBlank()) {
+            onContinue()
+            return
+        }
+        val ad = appOpenAd
+        val now = System.currentTimeMillis()
+        val lastShown = frequency.getLong("last_app_open_shown", 0L)
+        if (ad == null || SystemClock.elapsedRealtime() - appOpenLoadedAt >= 4 * 3600_000L ||
+            now - lastShown < 10 * 60_000L ||
+            now - frequency.getLong("last_shown", 0L) < 5 * 60_000L ||
+            activity.isFinishing || activity.isDestroyed ||
+            (activity as? LifecycleOwner)?.lifecycle?.currentState != Lifecycle.State.RESUMED
+        ) {
+            preloadAppOpenAd()
+            onContinue()
+            return
+        }
+        appOpenAd = null
+        showing = true
+        ad.fullScreenContentCallback = object : FullScreenContentCallback() {
+            override fun onAdShowedFullScreenContent() {
+                frequency.edit().putLong("last_app_open_shown", System.currentTimeMillis()).apply()
+            }
+            override fun onAdDismissedFullScreenContent() {
+                showing = false
+                preloadAppOpenAd()
+                onContinue()
+            }
+            override fun onAdFailedToShowFullScreenContent(error: AdError) {
+                showing = false
+                preloadAppOpenAd()
+                onContinue()
+            }
+        }
+        try {
+            ad.show(activity)
+        } catch (_: RuntimeException) {
+            showing = false
+            onContinue()
+        }
+    }
+
     fun afterSavedPdf(activity: Activity, onContinue: () -> Unit) =
         showAtTransition(activity, "completed", 2, onContinue)
-
-    fun beforePdfTool(activity: Activity, onContinue: () -> Unit) =
-        showAtTransition(activity, "tool_opens", 3, onContinue)
 
     private fun showAtTransition(
         activity: Activity,
@@ -102,6 +174,7 @@ class AdsController(context: Context) {
         val now = System.currentTimeMillis()
         val ad = interstitial
         if (completed < threshold || now - frequency.getLong("last_shown", 0) < 5 * 60_000L ||
+            now - frequency.getLong("last_app_open_shown", 0L) < 5 * 60_000L ||
             ad == null || SystemClock.elapsedRealtime() - loadedAt >= 55 * 60_000L ||
             activity.isFinishing || activity.isDestroyed ||
             (activity as? LifecycleOwner)?.lifecycle?.currentState != Lifecycle.State.RESUMED
@@ -119,6 +192,7 @@ class AdsController(context: Context) {
             if (!closed && !activity.isDestroyed && !activity.isFinishing) {
                 onContinue()
                 preloadInterstitial()
+                preloadAppOpenAd()
             }
         }
         ad.fullScreenContentCallback = object : FullScreenContentCallback() {
@@ -172,7 +246,9 @@ class AdsController(context: Context) {
 
     private fun beginConsent(): Long {
         interstitial = null
+        appOpenAd = null
         loadingGeneration = null
+        loadingAppOpenGeneration = null
         val token = gate.beginConsent()
         // Stop SDK auto-refresh before presenting privacy choices.
         invalidationListeners.toList().forEach { it() }
@@ -197,6 +273,7 @@ class AdsController(context: Context) {
                 gate.initialized()
                 publish(busy = false, error = message)
                 preloadInterstitial()
+                preloadAppOpenAd()
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
@@ -236,7 +313,9 @@ class AdsController(context: Context) {
         closed = true
         gate.close()
         interstitial = null
+        appOpenAd = null
         loadingGeneration = null
+        loadingAppOpenGeneration = null
         invalidationListeners.toList().forEach { it() }
         invalidationListeners.clear()
         mutableState.value =
